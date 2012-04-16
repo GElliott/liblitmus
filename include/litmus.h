@@ -51,6 +51,8 @@ int sporadic_task_ns(
 typedef enum  {
 	FMLP_SEM	= 0,
 	SRP_SEM		= 1,
+	RSM_SEM		= 2,
+	IKGLP_SEM   = 3,
 } obj_type_t;
 
 int od_openx(int fd, obj_type_t type, int obj_id, void* config);
@@ -65,6 +67,16 @@ static inline int od_open(int fd, obj_type_t type, int obj_id)
 int litmus_lock(int od);
 int litmus_unlock(int od);
 
+/* Dynamic group lock support.  ods arrays MUST BE PARTIALLY ORDERED!!!!!!
+ * Use the same ordering for lock and unlock.
+ *
+ * Ex:
+ *   litmus_dgl_lock({A, B, C, D}, 4);
+ *   litmus_dgl_unlock({A, B, C, D}, 4);
+ */
+int litmus_dgl_lock(int* ods, int dgl_size);
+int litmus_dgl_unlock(int* ods, int dgl_size);	
+	
 /* job control*/
 int get_job_no(unsigned int* job_no);
 int wait_for_job_release(unsigned int job_no);
@@ -127,6 +139,15 @@ static inline int open_srp_sem(int fd, int name)
 	return od_open(fd, SRP_SEM, name);
 }
 
+static inline int open_rsm_sem(int fd, int name)
+{
+	return od_open(fd, RSM_SEM, name);
+}
+
+static inline int open_ikglp_sem(int fd, int name, void *arg)
+{
+	return od_openx(fd, IKGLP_SEM, name, arg);
+}
 
 /* syscall overhead measuring */
 int null_call(cycles_t *timestamp);

@@ -71,7 +71,7 @@ AR  := ${CROSS_COMPILE}${AR}
 
 all     = lib ${rt-apps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
-	  base_mt_task runtests
+	  base_mt_task runtests nested locktest ikglptest dgl
 
 .PHONY: all lib clean dump-config TAGS tags cscope help
 
@@ -153,7 +153,7 @@ arch/${include-${ARCH}}/include/asm/%.h: \
 	@mkdir -p ${dir $@}
 	cp $< $@
 
-litmus-headers = include/litmus/rt_param.h include/litmus/unistd_32.h \
+litmus-headers = include/litmus/rt_param.h include/litmus/binheap.h include/litmus/unistd_32.h \
 	include/litmus/unistd_64.h
 
 unistd-headers = \
@@ -210,6 +210,18 @@ obj-rt_launch = rt_launch.o common.o
 
 obj-rtspin = rtspin.o common.o
 lib-rtspin = -lrt
+
+obj-nested = nested.o common.o
+lib-nested = -lrt
+
+obj-locktest = locktest.o common.o
+lib-locktest = -lrt
+
+obj-ikglptest = ikglptest.o common.o
+lib-ikglptest = -lrt
+
+obj-dgl = dgl.o common.o
+lib-dgl = -lrt
 
 obj-release_ts = release_ts.o
 
