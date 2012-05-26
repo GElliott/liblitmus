@@ -51,8 +51,15 @@ int sporadic_task_ns(
 typedef enum  {
 	FMLP_SEM	= 0,
 	SRP_SEM		= 1,
-	RSM_SEM		= 2,
-	IKGLP_SEM   = 3,
+	
+	RSM_MUTEX	= 2,
+	IKGLP_SEM	= 3,
+	KFMLP_SEM	= 4,
+	
+	IKGLP_SIMPLE_GPU_AFF_OBS = 5,
+	IKGLP_GPU_AFF_OBS = 6,
+	KFMLP_SIMPLE_GPU_AFF_OBS = 7,
+	KFMLP_GPU_AFF_OBS = 8,
 } obj_type_t;
 
 int od_openx(int fd, obj_type_t type, int obj_id, void* config);
@@ -76,7 +83,11 @@ int litmus_unlock(int od);
  */
 int litmus_dgl_lock(int* ods, int dgl_size);
 int litmus_dgl_unlock(int* ods, int dgl_size);	
-	
+
+/* nvidia graphics cards */
+int register_nv_device(int nv_device_id);
+int unregister_nv_device(int nv_device_id);
+
 /* job control*/
 int get_job_no(unsigned int* job_no);
 int wait_for_job_release(unsigned int job_no);
@@ -134,6 +145,11 @@ static inline int open_fmlp_sem(int fd, int name)
 	return od_open(fd, FMLP_SEM, name);
 }
 
+static inline int open_kfmlp_sem(int fd, int name, void* arg)
+{
+	return od_openx(fd, KFMLP_SEM, name, arg);
+}
+
 static inline int open_srp_sem(int fd, int name)
 {
 	return od_open(fd, SRP_SEM, name);
@@ -141,14 +157,38 @@ static inline int open_srp_sem(int fd, int name)
 
 static inline int open_rsm_sem(int fd, int name)
 {
-	return od_open(fd, RSM_SEM, name);
+	return od_open(fd, RSM_MUTEX, name);
 }
 
 static inline int open_ikglp_sem(int fd, int name, void *arg)
 {
 	return od_openx(fd, IKGLP_SEM, name, arg);
 }
+	
+static inline int open_kfmlp_simple_gpu_aff_obs(int fd, int name, struct gpu_affinity_observer_args *arg)
+{
+	return od_openx(fd, KFMLP_SIMPLE_GPU_AFF_OBS, name, arg);
+}
+	
+static inline int open_kfmlp_gpu_aff_obs(int fd, int name, struct gpu_affinity_observer_args *arg)
+{
+	return od_openx(fd, KFMLP_GPU_AFF_OBS, name, arg);
+}
 
+static inline int open_ikglp_simple_gpu_aff_obs(int fd, int name, void *arg)
+{
+	return od_openx(fd, IKGLP_SIMPLE_GPU_AFF_OBS, name, arg);
+}	
+	
+static inline int open_ikglp_gpu_aff_obs(int fd, int name, void *arg)
+{
+	return od_openx(fd, IKGLP_GPU_AFF_OBS, name, arg);
+}
+
+// takes names "name" and "name+1"
+int open_kfmlp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset, int num_simult_users, int affinity_aware);
+int open_ikglp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset, int num_simult_users, int affinity_aware, int relax_max_fifo_len);
+	
 /* syscall overhead measuring */
 int null_call(cycles_t *timestamp);
 

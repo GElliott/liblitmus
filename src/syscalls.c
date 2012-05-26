@@ -96,3 +96,13 @@ int null_call(cycles_t *timestamp)
 {
 	return syscall(__NR_null_call, timestamp);
 }
+
+int register_nv_device(int nv_device_id)
+{
+	return syscall(__NR_register_nv_device, nv_device_id, 1);
+}
+
+int unregister_nv_device(int nv_device_id)
+{
+	return syscall(__NR_register_nv_device, nv_device_id, 0);
+}
