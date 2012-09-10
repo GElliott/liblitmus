@@ -19,7 +19,7 @@ LITMUS_KERNEL ?= ../litmus-rt
 # Internal configuration.
 
 # compiler flags
-flags-debug    = -Wall -Werror -g -Wdeclaration-after-statement
+flags-debug    = -g -std=c99
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 
 # architecture-specific flags
@@ -154,7 +154,7 @@ arch/${include-${ARCH}}/include/asm/%.h: \
 	cp $< $@
 
 litmus-headers = include/litmus/rt_param.h include/litmus/binheap.h include/litmus/unistd_32.h \
-	include/litmus/unistd_64.h
+	include/litmus/unistd_64.h include/litmus/fpmath.h
 
 unistd-headers = \
   $(foreach file,${unistd-${ARCH}},arch/${include-${ARCH}}/include/asm/$(file))
@@ -212,16 +212,16 @@ obj-rtspin = rtspin.o common.o
 lib-rtspin = -lrt
 
 obj-nested = nested.o common.o
-lib-nested = -lrt
+lib-nested = -lrt -pthread
 
 obj-locktest = locktest.o common.o
-lib-locktest = -lrt
+lib-locktest = -lrt -pthread
 
 obj-ikglptest = ikglptest.o common.o
-lib-ikglptest = -lrt
+lib-ikglptest = -lrt -pthread -lm
 
 obj-dgl = dgl.o common.o
-lib-dgl = -lrt
+lib-dgl = -lrt -pthread
 
 obj-release_ts = release_ts.o
 
@@ -233,7 +233,7 @@ lib-measure_syscall = -lm
 
 .SECONDEXPANSION:
 ${rt-apps}: $${obj-$$@} liblitmus.a
-	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${lib-$@} ${liblitmus-flags}
+	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${lib-$@} ${liblitmus-flags} ${lib-$@}
 
 # ##############################################################################
 # Dependency resolution.
