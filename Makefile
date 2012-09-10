@@ -19,7 +19,7 @@ LITMUS_KERNEL ?= ../litmus-rt
 # Internal configuration.
 
 # compiler flags
-flags-debug    = -g -std=c99
+flags-debug    = -Wall -Werror -Wdeclaration-after-statement -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 
 # architecture-specific flags
@@ -157,6 +157,7 @@ litmus-headers = \
 	include/litmus/rt_param.h \
 	include/litmus/fpmath.h \
 	include/litmus/binheap.h \
+	include/litmus/signal.h \
 	include/litmus/unistd_32.h \
 	include/litmus/unistd_64.h
 
@@ -237,7 +238,7 @@ lib-measure_syscall = -lm
 
 .SECONDEXPANSION:
 ${rt-apps}: $${obj-$$@} liblitmus.a
-	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${lib-$@} ${liblitmus-flags} ${lib-$@}
+	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${liblitmus-flags} ${lib-$@}
 
 # ##############################################################################
 # Dependency resolution.

@@ -109,7 +109,7 @@ struct avg_info feedback(int _a, int _b)
 	fp_t _est, _err;
 
 	int base = 1000000;
-	int range = 40;
+	//int range = 40;
 
 	fp_t est = _integer_to_fp(base);
 	fp_t err = _fp(base/2);
@@ -117,50 +117,56 @@ struct avg_info feedback(int _a, int _b)
 #define NUM_SAMPLES 10000
 
 	float samples[NUM_SAMPLES] = {0.0};
-
+	float accu_abs, accu;
+	float avg;
+	float devsum;
+	float stdev;
+	struct avg_info ret;
 
 	for(i = 0; i < NUM_SAMPLES; ++i) {
-	int num = ((rand()%40)*(rand()%2 ? -1 : 1)/100.0)*base + base;
-	actual_fp = _integer_to_fp(num);
+		int num = ((rand()%40)*(rand()%2 ? -1 : 1)/100.0)*base + base;
+		float rel_err;
+
+		actual_fp = _integer_to_fp(num);
 
 //	printf("Before: est = %d\terr = %d\n", (int)_fp_to_integer(est), (int)_fp_to_integer(err));
 
-	_err = _sub(actual_fp, est);
-	_est = _add(_mul(a, _err), _mul(b, err));
+		_err = _sub(actual_fp, est);
+		_est = _add(_mul(a, _err), _mul(b, err));
 
-	float rel_err = _fp_to_integer(_mul(_div(_err, est), _integer_to_fp(10000)))/10000.0;
-	rel_err *= 100.0;
-	//printf("%6.2f\n", rel_err);
-	samples[i] = rel_err;
+		rel_err = _fp_to_integer(_mul(_div(_err, est), _integer_to_fp(10000)))/10000.0;
+		rel_err *= 100.0;
+		//printf("%6.2f\n", rel_err);
+		samples[i] = rel_err;
 
-	est = _est;
-	err = _add(err, _err);
+		est = _est;
+		err = _add(err, _err);
 
-	if((int)_fp_to_integer(est) <= 0) {
-		est = actual_fp;
-		err = _div(actual_fp, _integer_to_fp(2));
-	}
+		if((int)_fp_to_integer(est) <= 0) {
+			est = actual_fp;
+			err = _div(actual_fp, _integer_to_fp(2));
+		}
 
 	//printf("After: est = %d\terr = %d\n", (int)_fp_to_integer(est), (int)_fp_to_integer(err));
 	}
 
-	float accu_abs = 0.0, accu = 0.0;
+	accu_abs = 0.0;
+	accu = 0.0;
 	for(i = 0; i < NUM_SAMPLES; ++i) {
 		accu += samples[i];
 		accu_abs += abs(samples[i]);
 	}
 
-	float avg = accu_abs/NUM_SAMPLES;
-	float devsum = 0;
+	avg = accu_abs/NUM_SAMPLES;
+	devsum = 0;
 	for(i = 0; i < NUM_SAMPLES; ++i) {
 		float dev = samples[i] - avg;
 		dev *= dev;
 		devsum += dev;
 	}
 
-	float stdev = sqrtf(devsum/(NUM_SAMPLES-1));
+	stdev = sqrtf(devsum/(NUM_SAMPLES-1));
 	
-	struct avg_info ret;
 	ret.avg = avg;
 	ret.stdev = stdev;
 
@@ -381,7 +387,7 @@ void* rt_thread(void* _ctx)
 	TH_CALL( init_rt_thread() );
 
 	/* Vary period a little bit. */
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, 1) );
+	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
 
 	if(USE_KFMLP) {
 		ctx->kexclu = open_kfmlp_gpu_sem(ctx->fd,

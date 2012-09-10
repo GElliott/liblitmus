@@ -41,13 +41,13 @@ int __launch_rt_task(rt_fn_t rt_prog, void *rt_arg, rt_setup_fn_t setup,
 }
 
 int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, int wcet, int period,
-		     task_class_t class)
+		     task_class_t rt_class)
 {
 	struct rt_task params;
 	params.cpu       = cpu;
 	params.period    = period;
 	params.exec_cost = wcet;
-	params.cls       = class;
+	params.cls       = rt_class;
 	params.phase     = 0;
 	/* enforce budget for tasks that might not use sleep_next_period() */
 	params.budget_policy = QUANTUM_ENFORCEMENT;

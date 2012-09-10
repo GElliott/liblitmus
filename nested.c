@@ -147,7 +147,7 @@ void* rt_thread(void* _ctx)
 	//printf("RT Thread %d active.\n", ctx->id);
 
 	TH_CALL( init_rt_thread() );
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, 0) );
+	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0) );
 
 	for (i = 0; i < NUM_SEMS; i++) {
 		ctx->od[i] = open_rsm_sem(ctx->fd, i);

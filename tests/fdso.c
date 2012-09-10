@@ -48,8 +48,8 @@ TESTCASE(invalid_od, ALL,
 TESTCASE(invalid_obj_type, ALL,
 	 "reject invalid object types")
 {
-	SYSCALL_FAILS( EINVAL, od_open(0, -1, 0) );
-	SYSCALL_FAILS( EINVAL, od_open(0, 10, 0) );
+	SYSCALL_FAILS( EINVAL, od_open(0, (obj_type_t)-1, 0) );
+	SYSCALL_FAILS( EINVAL, od_open(0, (obj_type_t)10, 0) );
 }
 
 TESTCASE(not_inherit_od, GSN_EDF | PSN_EDF,
