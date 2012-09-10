@@ -153,8 +153,12 @@ arch/${include-${ARCH}}/include/asm/%.h: \
 	@mkdir -p ${dir $@}
 	cp $< $@
 
-litmus-headers = include/litmus/rt_param.h include/litmus/binheap.h include/litmus/unistd_32.h \
-	include/litmus/unistd_64.h include/litmus/fpmath.h
+litmus-headers = \
+	include/litmus/rt_param.h \
+	include/litmus/fpmath.h \
+	include/litmus/binheap.h \
+	include/litmus/unistd_32.h \
+	include/litmus/unistd_64.h
 
 unistd-headers = \
   $(foreach file,${unistd-${ARCH}},arch/${include-${ARCH}}/include/asm/$(file))
