@@ -58,14 +58,20 @@ typedef enum  {
 	FMLP_SEM	= 0,
 	SRP_SEM		= 1,
 	
-	RSM_MUTEX	= 2,
-	IKGLP_SEM	= 3,
-	KFMLP_SEM	= 4,
+	MPCP_SEM	= 2,
+	MPCP_VS_SEM	= 3,
+	DPCP_SEM	= 4,
+
+	PCP_SEM		= 5,
+
+	RSM_MUTEX	= 6,
+	IKGLP_SEM	= 7,
+	KFMLP_SEM	= 8,
 	
-	IKGLP_SIMPLE_GPU_AFF_OBS = 5,
-	IKGLP_GPU_AFF_OBS = 6,
-	KFMLP_SIMPLE_GPU_AFF_OBS = 7,
-	KFMLP_GPU_AFF_OBS = 8,
+	IKGLP_SIMPLE_GPU_AFF_OBS = 9,
+	IKGLP_GPU_AFF_OBS = 10,
+	KFMLP_SIMPLE_GPU_AFF_OBS = 11,
+	KFMLP_GPU_AFF_OBS = 12,
 } obj_type_t;
 
 int od_openx(int fd, obj_type_t type, int obj_id, void* config);
