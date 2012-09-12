@@ -71,7 +71,7 @@ AR  := ${CROSS_COMPILE}${AR}
 
 all     = lib ${rt-apps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
-	  base_mt_task runtests
+	  base_mt_task runtests aux_threads
 
 .PHONY: all lib clean dump-config TAGS tags cscope help
 
@@ -206,6 +206,9 @@ obj-base_task = base_task.o
 obj-base_mt_task = base_mt_task.o
 ldf-base_mt_task = -pthread
 
+obj-aux_threads = aux_threads.o
+ldf-aux_threads = -pthread
+
 obj-rt_launch = rt_launch.o common.o
 
 obj-rtspin = rtspin.o common.o
@@ -221,7 +224,7 @@ lib-measure_syscall = -lm
 
 .SECONDEXPANSION:
 ${rt-apps}: $${obj-$$@} liblitmus.a
-	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${lib-$@} ${liblitmus-flags}
+	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${liblitmus-flags} ${lib-$@}
 
 # ##############################################################################
 # Dependency resolution.

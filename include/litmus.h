@@ -102,6 +102,8 @@ int  requested_to_preempt(void);
 int wait_for_ts_release(void);
 int release_ts(lt_t *delay);
 
+int slave_non_rt_threads(void);
+
 #define __NS_PER_MS 1000000
 
 static inline lt_t ms2lt(unsigned long milliseconds)

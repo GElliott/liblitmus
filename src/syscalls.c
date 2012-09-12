@@ -86,3 +86,8 @@ int null_call(cycles_t *timestamp)
 {
 	return syscall(__NR_null_call, timestamp);
 }
+
+int slave_non_rt_threads(void)
+{
+	return syscall(__NR_slave_non_rt_threads);
+}
