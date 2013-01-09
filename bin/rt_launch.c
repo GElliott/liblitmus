@@ -54,7 +54,7 @@ int main(int argc, char** argv)
 	int verbose = 0;
 	int wait = 0;
 	startup_info_t info;
-	task_class_t class = RT_CLASS_HARD;
+	task_class_t rt_class = RT_CLASS_HARD;
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
 		switch (opt) {
@@ -69,8 +69,8 @@ int main(int argc, char** argv)
 			migrate = 1;
 			break;
 		case 'c':
-			class = str2class(optarg);
-			if (class == -1)
+			rt_class = str2class(optarg);
+			if (rt_class == -1)
 				usage("Unknown task class.");
 			break;
 
@@ -107,7 +107,7 @@ int main(int argc, char** argv)
 		if (ret < 0)
 			bail_out("could not migrate to target partition");
 	}
-	ret = __create_rt_task(launch, &info, cpu, wcet, period, class);
+	ret = __create_rt_task(launch, &info, cpu, wcet, period, rt_class);
 
 	
 	if (ret < 0)

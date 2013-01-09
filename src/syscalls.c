@@ -52,6 +52,16 @@ int litmus_unlock(int od)
 	return syscall(__NR_litmus_unlock, od);
 }
 
+int litmus_dgl_lock(int *ods, int dgl_size)
+{
+	return syscall(__NR_litmus_dgl_lock, ods, dgl_size);
+}
+
+int litmus_dgl_unlock(int *ods, int dgl_size)
+{
+	return syscall(__NR_litmus_dgl_unlock, ods, dgl_size);
+}
+
 int get_job_no(unsigned int *job_no)
 {
 	return syscall(__NR_query_job_no, job_no);
@@ -87,7 +97,12 @@ int null_call(cycles_t *timestamp)
 	return syscall(__NR_null_call, timestamp);
 }
 
-int slave_non_rt_threads(void)
+int enable_aux_rt_tasks(int flags)
 {
-	return syscall(__NR_slave_non_rt_threads);
+	return syscall(__NR_set_aux_tasks, flags | AUX_ENABLE);
+}
+
+int disable_aux_rt_tasks(int flags)
+{
+	return syscall(__NR_set_aux_tasks, flags & ~AUX_ENABLE);
 }

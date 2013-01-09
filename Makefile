@@ -19,7 +19,7 @@ LITMUS_KERNEL ?= ../litmus-rt
 # Internal configuration.
 
 # compiler flags
-flags-debug    = -Wall -Werror -g -Wdeclaration-after-statement
+flags-debug    = -Wall -Wdeclaration-after-statement -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 
 # architecture-specific flags
@@ -71,7 +71,7 @@ AR  := ${CROSS_COMPILE}${AR}
 
 all     = lib ${rt-apps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
-	  base_mt_task runtests aux_threads
+	  base_mt_task runtests nested locktest ikglptest dgl aux_threads normal_task
 
 .PHONY: all lib clean dump-config TAGS tags cscope help
 
@@ -153,7 +153,12 @@ arch/${include-${ARCH}}/include/asm/%.h: \
 	@mkdir -p ${dir $@}
 	cp $< $@
 
-litmus-headers = include/litmus/rt_param.h include/litmus/unistd_32.h \
+litmus-headers = \
+	include/litmus/rt_param.h \
+	include/litmus/fpmath.h \
+	include/litmus/binheap.h \
+	include/litmus/signal.h \
+	include/litmus/unistd_32.h \
 	include/litmus/unistd_64.h
 
 unistd-headers = \
@@ -213,6 +218,21 @@ obj-rt_launch = rt_launch.o common.o
 
 obj-rtspin = rtspin.o common.o
 lib-rtspin = -lrt
+
+obj-nested = nested.o common.o
+lib-nested = -lrt -pthread
+
+obj-locktest = locktest.o common.o
+lib-locktest = -lrt -pthread
+
+obj-ikglptest = ikglptest.o common.o
+lib-ikglptest = -lrt -pthread -lm
+
+obj-normal_task = normal_task.o common.o
+lib-normal_task = -lrt -pthread -lm
+
+obj-dgl = dgl.o common.o
+lib-dgl = -lrt -pthread
 
 obj-release_ts = release_ts.o
 

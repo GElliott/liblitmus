@@ -67,7 +67,7 @@ static void get_exec_times(const char *file, const int column,
 		bail_out("rewinding file failed");
 
 	/* allocate space for exec times */
-	*exec_times = calloc(*num_jobs, sizeof(*exec_times));
+	*exec_times = (double*)calloc(*num_jobs, sizeof(*exec_times));
 	if (!*exec_times)
 		bail_out("couldn't allocate memory");
 
@@ -152,16 +152,28 @@ static void debug_delay_loop(void)
 
 static int job(double exec_time, double program_end)
 {
-	if (wctime() > program_end)
-		return 0;
-	else {
-		loop_for(exec_time, program_end + 1);
-		sleep_next_period();
-		return 1;
+	int exit = 0;
+	if (wctime() > program_end) {
+		exit = 1;
 	}
+	else {
+		LITMUS_TRY {
+			loop_for(exec_time, program_end + 1);
+		}
+		LITMUS_CATCH(SIG_BUDGET) {
+			fprintf(stdout, "Exhausted budget! Finishing job NOW!\n");
+		}
+		END_LITMUS_TRY;
+	}
+
+	if (!exit) {
+		sleep_next_period();
+	}
+
+	return !exit;
 }
 
-#define OPTSTR "p:c:wlveo:f:s:"
+#define OPTSTR "p:c:wlveio:f:s:"
 
 int main(int argc, char** argv)
 {
@@ -177,10 +189,11 @@ int main(int argc, char** argv)
 	int column = 1;
 	const char *file = NULL;
 	int want_enforcement = 0;
+	int want_signals = 0;
 	double duration = 0, start;
 	double *exec_times = NULL;
 	double scale = 1.0;
-	task_class_t class = RT_CLASS_HARD;
+	task_class_t rt_class = RT_CLASS_HARD;
 	int cur_job, num_jobs;
 
 	progname = argv[0];
@@ -195,12 +208,15 @@ int main(int argc, char** argv)
 			migrate = 1;
 			break;
 		case 'c':
-			class = str2class(optarg);
-			if (class == -1)
+			rt_class = str2class(optarg);
+			if (rt_class == -1)
 				usage("Unknown task class.");
 			break;
 		case 'e':
 			want_enforcement = 1;
+			break;
+		case 'i':
+			want_signals = 1;
 			break;
 		case 'l':
 			test_loop = 1;
@@ -274,14 +290,21 @@ int main(int argc, char** argv)
 			bail_out("could not migrate to target partition");
 	}
 
-	ret = sporadic_task_ns(wcet, period, 0, cpu, class,
+	ret = sporadic_task_ns(wcet, period, 0, cpu, rt_class,
 			       want_enforcement ? PRECISE_ENFORCEMENT
 			                        : NO_ENFORCEMENT,
+				   want_signals ? PRECISE_SIGNALS
+				   				: NO_SIGNALS,
 			       migrate);
 	if (ret < 0)
 		bail_out("could not setup rt task params");
 
 	init_litmus();
+
+	if (want_signals) {
+		/* bind default longjmp signal handler to SIG_BUDGET. */
+		activate_litmus_signals(SIG_BUDGET_MASK, longjmp_on_litmus_signal);
+	}
 
 	ret = task_mode(LITMUS_RT_TASK);
 	if (ret != 0)
@@ -304,7 +327,10 @@ int main(int argc, char** argv)
 		}
 	} else {
 		/* conver to seconds and scale */
-		while (job(wcet_ms * 0.001 * scale, start + duration));
+		int run = 1;
+		while (run) {
+			run = job(wcet_ms * 0.001 * scale, start + duration);
+		}
 	}
 
 	ret = task_mode(BACKGROUND_TASK);
