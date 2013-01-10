@@ -149,7 +149,8 @@ void* rt_thread(void* _ctx)
 	TH_CALL( init_rt_thread() );
 
 	/* Vary period a little bit. */
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0) );
+	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, LITMUS_LOWEST_PRIORITY,
+							RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0) );
 
 	ctx->ikglp = open_ikglp_sem(ctx->fd, 0, (void*)&NUM_REPLICAS);
 	if(ctx->ikglp < 0)

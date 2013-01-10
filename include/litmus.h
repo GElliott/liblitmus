@@ -31,37 +31,47 @@ int get_rt_task_param(pid_t pid, struct rt_task* param);
 
 /* setup helper */
 
-/* times are given in ms */
+/* Times are given in ms. The 'priority' parameter
+ * is only relevant under fixed-priority scheduling (and
+ * ignored by other plugins). The task_class_t parameter
+ * is ignored by most plugins.
+ */
 int sporadic_task(
 		lt_t e, lt_t p, lt_t phase,
-		int partition, task_class_t cls,
+		int partition, unsigned int priority,
+		task_class_t cls,
 		budget_policy_t budget_policy,
 		budget_signal_policy_t budget_signal_policy,
 		int set_cpu_set);
 
-/* times are given in ns */
+/* Times are given in ns. The 'priority' parameter
+ * is only relevant under fixed-priority scheduling (and
+ * ignored by other plugins). The task_class_t parameter
+ * is ignored by most plugins.
+ */
 int sporadic_task_ns(
 		lt_t e, lt_t p, lt_t phase,
-		int cpu, task_class_t cls,
+		int cpu, unsigned int priority,
+		task_class_t cls,
 		budget_policy_t budget_policy,
 		budget_signal_policy_t budget_signal_policy,
 		int set_cpu_set);
 
-/* budget enforcement off by default in these macros */
+/* Convenience macros. Budget enforcement off by default in these macros. */
 #define sporadic_global(e, p) \
-	sporadic_task(e, p, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0)
+	sporadic_task(e, p, 0, 0, LITMUS_LOWEST_PRIORITY, \
+		RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0)
 #define sporadic_partitioned(e, p, cpu) \
-	sporadic_task(e, p, 0, cpu, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1)
+	sporadic_task(e, p, 0, cpu, LITMUS_LOWEST_PRIORITY, \
+		RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1)
 
 /* file descriptor attached shared objects support */
 typedef enum  {
 	FMLP_SEM	= 0,
 	SRP_SEM		= 1,
-	
 	MPCP_SEM	= 2,
 	MPCP_VS_SEM	= 3,
 	DPCP_SEM	= 4,
-
 	PCP_SEM		= 5,
 
 	RSM_MUTEX	= 6,
@@ -73,6 +83,9 @@ typedef enum  {
 	KFMLP_SIMPLE_GPU_AFF_OBS = 11,
 	KFMLP_GPU_AFF_OBS = 12,
 } obj_type_t;
+
+int lock_protocol_for_name(const char* name);
+const char* name_for_lock_protocol(int id);
 
 int od_openx(int fd, obj_type_t type, int obj_id, void* config);
 int od_close(int od);
@@ -136,6 +149,7 @@ int  requested_to_preempt(void);
 /* task system support */
 int wait_for_ts_release(void);
 int release_ts(lt_t *delay);
+int get_nr_ts_release_waiters(void);
 
 
 int enable_aux_rt_tasks(int flags);
@@ -147,6 +161,9 @@ static inline lt_t ms2lt(unsigned long milliseconds)
 {
 	return __NS_PER_MS * milliseconds;
 }
+
+/* sleep for some number of nanoseconds */
+int lt_sleep(lt_t timeout);
 
 /* CPU time consumed so far in seconds */
 double cputime(void);
@@ -171,6 +188,21 @@ static inline int open_srp_sem(int fd, int name)
 	return od_open(fd, SRP_SEM, name);
 }
 
+static inline int open_pcp_sem(int fd, int name, int cpu)
+{
+	return od_openx(fd, PCP_SEM, name, &cpu);
+}
+
+static inline int open_mpcp_sem(int fd, int name)
+{
+	return od_open(fd, MPCP_SEM, name);
+}
+
+static inline int open_dpcp_sem(int fd, int name, int cpu)
+{
+	return od_openx(fd, DPCP_SEM, name, &cpu);
+}
+
 static inline int open_rsm_sem(int fd, int name)
 {
 	return od_open(fd, RSM_MUTEX, name);
@@ -181,12 +213,14 @@ static inline int open_ikglp_sem(int fd, int name, void *arg)
 	return od_openx(fd, IKGLP_SEM, name, arg);
 }
 	
-static inline int open_kfmlp_simple_gpu_aff_obs(int fd, int name, struct gpu_affinity_observer_args *arg)
+static inline int open_kfmlp_simple_gpu_aff_obs(int fd, int name,
+	struct gpu_affinity_observer_args *arg)
 {
 	return od_openx(fd, KFMLP_SIMPLE_GPU_AFF_OBS, name, arg);
 }
 	
-static inline int open_kfmlp_gpu_aff_obs(int fd, int name, struct gpu_affinity_observer_args *arg)
+static inline int open_kfmlp_gpu_aff_obs(int fd, int name,
+	struct gpu_affinity_observer_args *arg)
 {
 	return od_openx(fd, KFMLP_GPU_AFF_OBS, name, arg);
 }
@@ -202,8 +236,10 @@ static inline int open_ikglp_gpu_aff_obs(int fd, int name, void *arg)
 }
 
 // takes names "name" and "name+1"
-int open_kfmlp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset, int num_simult_users, int affinity_aware);
-int open_ikglp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset, int num_simult_users, int affinity_aware, int relax_max_fifo_len);
+int open_kfmlp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset,
+		int num_simult_users, int affinity_aware);
+int open_ikglp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset,
+		int num_simult_users, int affinity_aware, int relax_max_fifo_len);
 	
 /* syscall overhead measuring */
 int null_call(cycles_t *timestamp);

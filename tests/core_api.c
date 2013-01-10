@@ -20,7 +20,9 @@ TESTCASE(set_rt_task_param_invalid_params, ALL,
 	struct rt_task params;
 	params.cpu        = 0;
 	params.period     = 100;
+	params.relative_deadline = params.period;
 	params.phase      = 0;
+	params.priority	  = LITMUS_LOWEST_PRIORITY;
 	params.cls        = RT_CLASS_HARD;
 	params.budget_policy = NO_ENFORCEMENT;
 
@@ -33,13 +35,70 @@ TESTCASE(set_rt_task_param_invalid_params, ALL,
 	params.cpu       = -1;
 	SYSCALL_FAILS( EINVAL, set_rt_task_param(gettid(), &params) );
 
-	/* bad task */
+	/* infeasible density */
 	params.cpu  = 0;
+	params.relative_deadline = 30;
+	SYSCALL_FAILS( EINVAL, set_rt_task_param(gettid(), &params) );
+
+	/* bad task */
+	params.relative_deadline = params.period;
 	SYSCALL_FAILS( EINVAL, set_rt_task_param(-1, &params) );
 
 
 	/* now try correct params */
 	SYSCALL( set_rt_task_param(gettid(), &params) );
+}
+
+TESTCASE(reject_bad_priorities, P_FP,
+	 "reject invalid priorities")
+{
+	struct rt_task params;
+	params.cpu        = 0;
+	params.exec_cost  =  10;
+	params.period     = 100;
+	params.relative_deadline = params.period;
+	params.phase      = 0;
+	params.cls        = RT_CLASS_HARD;
+	params.budget_policy = NO_ENFORCEMENT;
+
+	SYSCALL( be_migrate_to(params.cpu) );
+
+	/* too high */
+	params.priority	  = 0;
+	SYSCALL( set_rt_task_param(gettid(), &params) );
+	SYSCALL_FAILS( EINVAL, task_mode(LITMUS_RT_TASK) );
+
+	/* too low */
+	params.priority   = LITMUS_MAX_PRIORITY;
+	SYSCALL( set_rt_task_param(gettid(), &params) );
+	SYSCALL_FAILS( EINVAL, task_mode(LITMUS_RT_TASK) );
+
+}
+
+TESTCASE(accept_valid_priorities, P_FP,
+	 "accept lowest and highest valid priorities")
+{
+	struct rt_task params;
+	params.cpu        = 0;
+	params.exec_cost  =  10;
+	params.period     = 100;
+	params.relative_deadline = params.period;
+	params.phase      = 0;
+	params.cls        = RT_CLASS_HARD;
+	params.budget_policy = NO_ENFORCEMENT;
+
+	SYSCALL( be_migrate_to(params.cpu) );
+
+	/* acceptable */
+	params.priority   = LITMUS_LOWEST_PRIORITY;
+	SYSCALL( set_rt_task_param(gettid(), &params) );
+	SYSCALL( task_mode(LITMUS_RT_TASK) );
+	SYSCALL( task_mode(BACKGROUND_TASK) );
+
+	params.priority   = LITMUS_HIGHEST_PRIORITY;
+	SYSCALL( set_rt_task_param(gettid(), &params) );
+	SYSCALL( task_mode(LITMUS_RT_TASK) );
+	SYSCALL( task_mode(BACKGROUND_TASK) );
 }
 
 TESTCASE(job_control_non_rt, ALL,
@@ -80,7 +139,7 @@ TESTCASE(rt_fork_non_rt, LITMUS,
 		/* parent */
 
 		SYSCALL( sleep_next_period() );
-		SYSCALL( wait_for_job_release(20) );
+		SYSCALL( wait_for_job_release(3) );
 		SYSCALL( get_job_no(&job_no) );
 
 		SYSCALL( task_mode(BACKGROUND_TASK) );
@@ -89,4 +148,21 @@ TESTCASE(rt_fork_non_rt, LITMUS,
 
 		ASSERT(WEXITSTATUS(status) == 0);
 	}
+}
+
+TESTCASE(ctrl_page_writable, ALL,
+	 "tasks have write access to /dev/litmus/ctrl mappings")
+{
+	volatile int *ctrl_page = (volatile int*) get_ctrl_page();
+
+	/* init_litmus() should have mapped the page already  */
+	ASSERT(ctrl_page != NULL);
+
+	/* These should work without page faults. */
+	enter_np();
+	exit_np();
+
+	/* Try poking the memory directly. */
+
+	ctrl_page[32] = 0x12345678;
 }

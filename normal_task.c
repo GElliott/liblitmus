@@ -67,7 +67,8 @@ int main(int argc, char** argv)
 	CALL( init_litmus() );
 
 	CALL( init_rt_thread() );
-	CALL( sporadic_task_ns(EXEC_COST, PERIOD, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+	CALL( sporadic_task_ns(EXEC_COST, PERIOD, 0, 0,
+		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
 	//CALL( task_mode(LITMUS_RT_TASK) );
 
 	fprintf(stdout, "Waiting for TS release.\n ");

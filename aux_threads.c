@@ -66,61 +66,6 @@ int job(void);
 			fprintf(stderr, "%s ok.\n", #exp); \
 	} while (0)
 
-
-ssize_t read_file(const char* fname, void* buf, size_t maxlen)
-{
-	int fd;
-	ssize_t n = 0;
-	size_t got = 0;
-
-	fd = open(fname, O_RDONLY);
-	if (fd == -1)
-		return -1;
-	
-	while (got < maxlen && (n = read(fd, buf + got, maxlen - got)) > 0)
-		got += n;
-	close(fd);
-	if (n < 0)
-		return -1;
-	else
-		return got;
-}
-
-void wait_until_ready(int expected)
-{
-	int ready = 0, all = 0;
-	char buf[100];
-	int loops = 0;
-	ssize_t len;
-	
-
-	do {
-		if (loops++ > 0)
-			sleep(1);
-		len = read_file(LITMUS_STATS_FILE, buf, sizeof(buf) - 1);
-		if (len < 0) {
-			fprintf(stderr,
-				"(EE) Error while reading '%s': %m.\n"
-				"(EE) Ignoring -w option.\n",
-				LITMUS_STATS_FILE);
-			break;
-		} else {
-			len = sscanf(buf,
-					 "real-time tasks   = %d\n"
-					 "ready for release = %d\n",
-					 &all, &ready);
-			if (len != 2) {
-				fprintf(stderr, 
-					"(EE) Could not parse '%s'.\n"
-					"(EE) Ignoring -w option.\n",
-					LITMUS_STATS_FILE);
-				break;
-			}
-		}
-	} while (expected > ready || ready < all);
-}
-
-
 int gRun = 1;
 
 pthread_mutex_t gMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -218,7 +163,7 @@ int main(int argc, char** argv)
 
 	{
 	int last = time(0);
-	struct timespec sleeptime = {0, 1000}; // 1 microsecond
+//	struct timespec sleeptime = {0, 1000}; // 1 microsecond
 //	for(i = 0; i < 24000; ++i) {
 	for(i = 0; i < 2000; ++i) {
 		sleep_next_period();

@@ -12,6 +12,8 @@
 #define LITMUS_CTRL_DEVICE "/dev/litmus/ctrl"
 #define CTRL_PAGES 1
 
+#define LITMUS_STATS_FILE "/proc/litmus/stats"
+
 static int map_file(const char* filename, void **addr, size_t size)
 {
 	int error = 0;
@@ -35,6 +37,43 @@ static int map_file(const char* filename, void **addr, size_t size)
 	return error;
 }
 
+ssize_t read_file(const char* fname, void* buf, size_t maxlen)
+{
+	int fd;
+	ssize_t n = 0;
+	size_t got = 0;
+
+	fd = open(fname, O_RDONLY);
+	if (fd == -1)
+		return -1;
+
+	while (got < maxlen && (n = read(fd, buf + got, maxlen - got)) > 0)
+		got += n;
+	close(fd);
+	if (n < 0)
+		return -1;
+	else
+		return got;
+}
+
+int get_nr_ts_release_waiters(void)
+{
+	int ready = 0, all = 0;
+	char buf[100];
+	ssize_t len;
+
+	len = read_file(LITMUS_STATS_FILE, buf, sizeof(buf) - 1);
+	if (len >= 0)
+		len = sscanf(buf,
+			     "real-time tasks   = %d\n"
+			     "ready for release = %d\n",
+			     &all, &ready);
+	if (len == 2)
+		return ready;
+	else
+		return len;
+}
+
 /* thread-local pointer to control page */
 static __thread struct control_page *ctrl_page;
 
@@ -43,7 +82,16 @@ int init_kernel_iface(void)
 	int err = 0;
 	long page_size = sysconf(_SC_PAGESIZE);
 
-	BUILD_BUG_ON(sizeof(union np_flag) != sizeof(uint32_t));
+	BUILD_BUG_ON(sizeof(union np_flag) != sizeof(uint64_t));
+
+	BUILD_BUG_ON(offsetof(struct control_page, sched.raw)
+		     != LITMUS_CP_OFFSET_SCHED);
+	BUILD_BUG_ON(offsetof(struct control_page, irq_count)
+		     != LITMUS_CP_OFFSET_IRQ_COUNT);
+	BUILD_BUG_ON(offsetof(struct control_page, ts_syscall_start)
+		     != LITMUS_CP_OFFSET_TS_SC_START);
+	BUILD_BUG_ON(offsetof(struct control_page, irq_syscall_start)
+		     != LITMUS_CP_OFFSET_IRQ_SC_START);
 
 	err = map_file(LITMUS_CTRL_DEVICE, (void**) &ctrl_page, CTRL_PAGES * page_size);
 	if (err) {

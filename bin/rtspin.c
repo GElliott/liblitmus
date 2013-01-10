@@ -173,7 +173,7 @@ static int job(double exec_time, double program_end)
 	return !exit;
 }
 
-#define OPTSTR "p:c:wlveio:f:s:"
+#define OPTSTR "p:c:wlveio:f:s:q:"
 
 int main(int argc, char** argv)
 {
@@ -181,6 +181,7 @@ int main(int argc, char** argv)
 	lt_t wcet;
 	lt_t period;
 	double wcet_ms, period_ms;
+	unsigned int priority = LITMUS_LOWEST_PRIORITY;
 	int migrate = 0;
 	int cpu = 0;
 	int opt;
@@ -206,6 +207,11 @@ int main(int argc, char** argv)
 		case 'p':
 			cpu = atoi(optarg);
 			migrate = 1;
+			break;
+		case 'q':
+			priority = atoi(optarg);
+			if (!litmus_is_valid_fixed_prio(priority))
+				usage("Invalid priority.");
 			break;
 		case 'c':
 			rt_class = str2class(optarg);
@@ -290,7 +296,7 @@ int main(int argc, char** argv)
 			bail_out("could not migrate to target partition");
 	}
 
-	ret = sporadic_task_ns(wcet, period, 0, cpu, rt_class,
+	ret = sporadic_task_ns(wcet, period, 0, cpu, priority, rt_class,
 			       want_enforcement ? PRECISE_ENFORCEMENT
 			                        : NO_ENFORCEMENT,
 				   want_signals ? PRECISE_SIGNALS

@@ -343,7 +343,8 @@ int main(int argc, char** argv)
 
 	if (NUM_AUX_THREADS) {
 		TH_CALL( init_rt_thread() );
-		TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*NUM_THREADS+1, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+		TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*NUM_THREADS+1, 0, 0,
+			LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
 		TH_CALL( task_mode(LITMUS_RT_TASK) );
 
 		printf("[MASTER] Waiting for TS release.\n ");
@@ -443,7 +444,8 @@ void* rt_thread(void* _ctx)
 	TH_CALL( init_rt_thread() );
 
 	/* Vary period a little bit. */
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0,
+		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
 
 	if(USE_KFMLP) {
 		ctx->kexclu = open_kfmlp_gpu_sem(ctx->fd,
