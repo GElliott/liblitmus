@@ -203,7 +203,7 @@ tests/runner.c: test_catalog.inc
 # Tools that link with liblitmus
 
 # these source files are found in bin/
-vpath %.c bin/
+vpath %.c bin/ gpu/
 
 obj-cycles = cycles.o
 
@@ -250,7 +250,7 @@ ${rt-apps}: $${obj-$$@} liblitmus.a
 # ##############################################################################
 # Dependency resolution.
 
-vpath %.c bin/ src/ tests/
+vpath %.c bin/ src/ gpu/ tests/
 
 obj-all = ${sort ${foreach target,${all},${obj-${target}}}}
 
