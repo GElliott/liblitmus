@@ -177,7 +177,8 @@ lib: liblitmus.a
 
 # all .c file in src/ are linked into liblitmus
 vpath %.c src/
-obj-lib = $(patsubst src/%.c,%.o,$(wildcard src/*.c))
+vpath %.c gpu/
+obj-lib = $(patsubst src/%.c,%.o,$(wildcard src/*.c)) $(patsubst gpu/%.c,%.o,$(wildcard gpu/*.c))
 
 liblitmus.a: ${obj-lib}
 	${AR} rcs $@ $+
