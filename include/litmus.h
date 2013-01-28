@@ -252,6 +252,13 @@ int null_call(cycles_t *timestamp);
 struct control_page* get_ctrl_page(void);
 
 
+/* sched_trace injection */
+int inject_name(void);
+int inject_param(void); /* sporadic_task_ns*() must have already been called */
+int inject_release(lt_t release, lt_t deadline, unsigned int job_no);
+int inject_completion(unsigned int job_no);
+
+
 /* Litmus signal handling */
 
 typedef struct litmus_sigjmp

@@ -130,7 +130,7 @@ int main(int argc, char** argv)
 	if(before)
 	{
 		CALL( init_rt_thread() );
-		CALL( sporadic_global(EXEC_COST, PERIOD) );
+		CALL( sporadic_partitioned(EXEC_COST, PERIOD, 0) );
 		CALL( task_mode(LITMUS_RT_TASK) );
 	}
 

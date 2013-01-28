@@ -106,3 +106,27 @@ int disable_aux_rt_tasks(int flags)
 {
 	return syscall(__NR_set_aux_tasks, flags & ~AUX_ENABLE);
 }
+
+int inject_name(void)
+{
+	return syscall(__NR_sched_trace_event, ST_INJECT_NAME, NULL);
+}
+
+int inject_param(void)
+{
+	return syscall(__NR_sched_trace_event, ST_INJECT_PARAM, NULL);
+}
+
+int inject_release(lt_t release, lt_t deadline, unsigned int job_no)
+{
+	struct st_inject_args args = {.release = release, .deadline = deadline, .job_no = job_no};
+	return syscall(__NR_sched_trace_event, ST_INJECT_RELEASE, &args);
+}
+
+int inject_completion(unsigned int job_no)
+{
+	struct st_inject_args args = {.release = 0, .deadline = 0, .job_no = job_no};
+	return syscall(__NR_sched_trace_event, ST_INJECT_COMPLETION, &args);
+}
+
+
