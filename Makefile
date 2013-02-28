@@ -21,6 +21,7 @@ LITMUS_KERNEL ?= ../litmus-rt
 # compiler flags
 flags-debug    = -Wall -Wdeclaration-after-statement -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
+flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
 # architecture-specific flags
 flags-i386     = -m32
@@ -48,8 +49,8 @@ LIBLITMUS ?= .
 headers = -I${LIBLITMUS}/include -I${LIBLITMUS}/arch/${include-${ARCH}}/include
 
 # combine options
-CPPFLAGS = ${flags-api} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
-CFLAGS   = ${flags-debug}
+CPPFLAGS = ${flags-api} ${flags-misc} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
+CFLAGS   = ${flags-debug} ${flags-misc}
 LDFLAGS  = ${flags-${ARCH}}
 
 # how to link against liblitmus

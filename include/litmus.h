@@ -74,7 +74,7 @@ typedef enum  {
 	DPCP_SEM	= 4,
 	PCP_SEM		= 5,
 
-	RSM_MUTEX	= 6,
+	FIFO_MUTEX	= 6,
 	IKGLP_SEM	= 7,
 	KFMLP_SEM	= 8,
 	
@@ -82,6 +82,8 @@ typedef enum  {
 	IKGLP_GPU_AFF_OBS = 10,
 	KFMLP_SIMPLE_GPU_AFF_OBS = 11,
 	KFMLP_GPU_AFF_OBS = 12,
+	
+	PRIOQ_MUTEX = 13,
 } obj_type_t;
 
 int lock_protocol_for_name(const char* name);
@@ -147,7 +149,8 @@ void exit_np(void);
 int  requested_to_preempt(void);
 
 /* task system support */
-int wait_for_ts_release(void);
+int wait_for_ts_release();
+int wait_for_ts_release2(struct timespec *release);
 int release_ts(lt_t *delay);
 int get_nr_ts_release_waiters(void);
 
@@ -173,14 +176,18 @@ double wctime(void);
 
 /* semaphore allocation */
 
+typedef int (*open_sem_t)(int fd, int name);
+	
 static inline int open_fmlp_sem(int fd, int name)
 {
 	return od_open(fd, FMLP_SEM, name);
 }
 
-static inline int open_kfmlp_sem(int fd, int name, void* arg)
+static inline int open_kfmlp_sem(int fd, int name, unsigned int nr_replicas)
 {
-	return od_openx(fd, KFMLP_SEM, name, arg);
+	if (!nr_replicas)
+		return -1;
+	return od_openx(fd, KFMLP_SEM, name, &nr_replicas);
 }
 
 static inline int open_srp_sem(int fd, int name)
@@ -203,43 +210,64 @@ static inline int open_dpcp_sem(int fd, int name, int cpu)
 	return od_openx(fd, DPCP_SEM, name, &cpu);
 }
 
-static inline int open_rsm_sem(int fd, int name)
+static inline int open_fifo_sem(int fd, int name)
 {
-	return od_open(fd, RSM_MUTEX, name);
-}
-
-static inline int open_ikglp_sem(int fd, int name, void *arg)
-{
-	return od_openx(fd, IKGLP_SEM, name, arg);
+	return od_open(fd, FIFO_MUTEX, name);
 }
 	
-static inline int open_kfmlp_simple_gpu_aff_obs(int fd, int name,
-	struct gpu_affinity_observer_args *arg)
+static inline int open_prioq_sem(int fd, int name)
 {
-	return od_openx(fd, KFMLP_SIMPLE_GPU_AFF_OBS, name, arg);
-}
-	
-static inline int open_kfmlp_gpu_aff_obs(int fd, int name,
-	struct gpu_affinity_observer_args *arg)
-{
-	return od_openx(fd, KFMLP_GPU_AFF_OBS, name, arg);
+	return od_open(fd, PRIOQ_MUTEX, name);
 }
 
-static inline int open_ikglp_simple_gpu_aff_obs(int fd, int name, void *arg)
-{
-	return od_openx(fd, IKGLP_SIMPLE_GPU_AFF_OBS, name, arg);
-}	
-	
-static inline int open_ikglp_gpu_aff_obs(int fd, int name, void *arg)
-{
-	return od_openx(fd, IKGLP_GPU_AFF_OBS, name, arg);
-}
+int open_ikglp_sem(int fd, int name, unsigned int nr_replicas);
 
-// takes names "name" and "name+1"
-int open_kfmlp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset,
-		int num_simult_users, int affinity_aware);
-int open_ikglp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset,
-		int num_simult_users, int affinity_aware, int relax_max_fifo_len);
+/* KFMLP-based Token Lock for GPUs
+ * Legacy; mostly untested.
+ */
+int open_kfmlp_gpu_sem(int fd, int name,
+	unsigned int num_gpus, unsigned int gpu_offset, unsigned int rho,
+	int affinity_aware /* bool */);
+	
+/* -- Example Configurations --
+ *
+ * Optimal IKGLP Configuration:
+ *   max_in_fifos = IKGLP_M_IN_FIFOS
+ *   max_fifo_len = IKGLP_OPTIMAL_FIFO_LEN
+ *
+ * IKGLP with Relaxed FIFO Length Constraints:
+ *   max_in_fifos = IKGLP_M_IN_FIFOS
+ *   max_fifo_len = IKGLP_UNLIMITED_FIFO_LEN
+ * NOTE: max_in_fifos still limits total number of requests in FIFOs.
+ *
+ * KFMLP Configuration (FIFO queues only):
+ *   max_in_fifos = IKGLP_UNLIMITED_IN_FIFOS
+ *   max_fifo_len = IKGLP_UNLIMITED_FIFO_LEN
+ * NOTE: Uses a non-optimal IKGLP configuration, not an actual KFMLP_SEM.
+ *
+ * RGEM-like Configuration (priority queues only):
+ *   max_in_fifos = 1..(rho*num_gpus)
+ *   max_fifo_len = 1
+ *
+ * For exclusive GPU allocation, use rho = 1
+ * For trivial token lock, use rho = # of tasks in task set
+ *
+ * A simple load-balancing heuristic will still be used if
+ * enable_affinity_heuristics = 0.
+ *
+ * Other constraints:
+ *  - max_in_fifos <= max_fifo_len * rho
+ *        (unless max_in_fifos = IKGLP_UNLIMITED_IN_FIFOS and
+ *         max_fifo_len = IKGLP_UNLIMITED_FIFO_LEN
+ *  - rho > 0
+ *  - num_gpus > 0
+ */
+// takes names 'name' and 'name+1'	
+int open_gpusync_token_lock(int fd, int name,
+		unsigned int num_gpus, unsigned int gpu_offset,
+		unsigned int rho, unsigned int max_in_fifos,
+		unsigned int max_fifo_len,
+		int enable_affinity_heuristics /* bool */);
 	
 /* syscall overhead measuring */
 int null_call(cycles_t *timestamp);
@@ -257,7 +285,22 @@ int inject_name(void);
 int inject_param(void); /* sporadic_task_ns*() must have already been called */
 int inject_release(lt_t release, lt_t deadline, unsigned int job_no);
 int inject_completion(unsigned int job_no);
+int inject_gpu_migration(unsigned int to, unsigned int from);
+int __inject_action(unsigned int action);
 
+/*
+#define inject_action(COUNT) \
+do { \
+unsigned int temp = (COUNT); \
+printf("%s:%d:%d\n",__FUNCTION__,__LINE__,temp); \
+__inject_action(temp); \
+}while(0);
+*/
+	
+#define inject_action(COUNT) \
+do { \
+}while(0);
+	
 
 /* Litmus signal handling */
 

@@ -82,9 +82,19 @@ int sched_getscheduler(pid_t pid)
 	return syscall(__NR_sched_getscheduler, pid);
 }
 
+static int __wait_for_ts_release(struct timespec *release)
+{
+	return syscall(__NR_wait_for_ts_release, release);
+}
+
 int wait_for_ts_release(void)
 {
-	return syscall(__NR_wait_for_ts_release);
+	return __wait_for_ts_release(NULL);
+}
+
+int wait_for_ts_release2(struct timespec *release)
+{
+	return __wait_for_ts_release(release);
 }
 
 int release_ts(lt_t *delay)
@@ -129,4 +139,14 @@ int inject_completion(unsigned int job_no)
 	return syscall(__NR_sched_trace_event, ST_INJECT_COMPLETION, &args);
 }
 
+int inject_gpu_migration(unsigned int to, unsigned int from)
+{
+	struct st_inject_args args = {.to = to, .from = from};
+	return syscall(__NR_sched_trace_event, ST_INJECT_MIGRATION, &args);
+}
 
+int __inject_action(unsigned int action)
+{
+	struct st_inject_args args = {.action = action};
+	return syscall(__NR_sched_trace_event, ST_INJECT_ACTION, &args);
+}

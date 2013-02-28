@@ -59,6 +59,8 @@ int NUM_SEMS=10;
 
 int SLEEP_BETWEEN_JOBS = 1;
 
+int USE_PRIOQ = 0;
+
 #define MAX_SEMS 1000
 
 //#define NEST_DEPTH	 5
@@ -80,7 +82,7 @@ void* rt_thread(void* _ctx);
 int nested_job(struct thread_context* ctx, int *count, int *next);
 int job(struct thread_context*);
 
-#define OPTSTR "t:s:d:f"
+#define OPTSTR "t:s:d:fq"
 
 int main(int argc, char** argv)
 {
@@ -104,6 +106,9 @@ int main(int argc, char** argv)
 				break;
 			case 'f':
 				SLEEP_BETWEEN_JOBS = 0;
+				break;
+			case 'q':
+				USE_PRIOQ = 1;
 				break;
 			default:
 				fprintf(stderr, "Unknown option: %c\n", opt);
@@ -148,12 +153,19 @@ void* rt_thread(void* _ctx)
 
 	TH_CALL( init_rt_thread() );
 	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0,
-		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0) );
+		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
 
 	for (i = 0; i < NUM_SEMS; i++) {
-		ctx->od[i] = open_rsm_sem(ctx->fd, i);
-		if(ctx->od[i] < 0)
-			perror("open_rsm_sem");
+		if (!USE_PRIOQ) {
+			ctx->od[i] = open_fifo_sem(ctx->fd, i);
+			if(ctx->od[i] < 0)
+				perror("open_fifo_sem");
+		}
+		else {
+			ctx->od[i] = open_prioq_sem(ctx->fd, i);
+			if(ctx->od[i] < 0)
+				perror("open_prioq_sem");
+		}
 		//printf("[%d] ctx->od[%d]: %d\n", ctx->id, i, ctx->od[i]);
 	}
 

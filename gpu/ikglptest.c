@@ -70,6 +70,7 @@ int RELAX_FIFO_MAX_LEN = 0;
 int USE_DYNAMIC_GROUP_LOCKS = 0;
 
 int SLEEP_BETWEEN_JOBS = 1;
+int USE_PRIOQ = 0;
 
 int gAuxRun = 1;
 pthread_mutex_t gMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -183,7 +184,7 @@ struct avg_info feedback(int _a, int _b)
 
 
 
-#define OPTSTR "t:k:o:z:s:d:lfaryA:"
+#define OPTSTR "t:k:o:z:s:d:lfaryA:q"
 
 int main(int argc, char** argv)
 {
@@ -237,6 +238,9 @@ int main(int argc, char** argv)
 				break;
 			case 'r':
 				RELAX_FIFO_MAX_LEN = 1;
+				break;
+			case 'q':
+				USE_PRIOQ = 1;
 				break;
 			default:
 				fprintf(stderr, "Unknown option: %c\n", opt);
@@ -458,14 +462,17 @@ void* rt_thread(void* _ctx)
 	}
 	else {
 //		ctx->kexclu = open_ikglp_sem(ctx->fd, 0, &NUM_GPUS);
-		ctx->kexclu = open_ikglp_gpu_sem(ctx->fd,
-										 0,  /* name */
-										 NUM_GPUS,
-										 GPU_OFFSET,
-										 NUM_SIMULT_USERS,
-										 ENABLE_AFFINITY,
-										 RELAX_FIFO_MAX_LEN
-										 );		
+		ctx->kexclu = open_gpusync_token_lock(ctx->fd,
+								0,  /* name */
+								NUM_GPUS,
+								GPU_OFFSET,
+								NUM_SIMULT_USERS,
+								IKGLP_M_IN_FIFOS,
+								(!RELAX_FIFO_MAX_LEN) ?
+									  IKGLP_OPTIMAL_FIFO_LEN :
+									  IKGLP_UNLIMITED_FIFO_LEN,
+								ENABLE_AFFINITY
+								);	
 	}
 	if(ctx->kexclu < 0)
 		perror("open_kexclu_sem");
@@ -473,11 +480,20 @@ void* rt_thread(void* _ctx)
 		printf("kexclu od = %d\n", ctx->kexclu);
 	
 	for (i = 0; i < NUM_SEMS; ++i) {
-		ctx->od[i] = open_rsm_sem(ctx->fd, i + ctx->kexclu + 2);
-		if(ctx->od[i] < 0)
-			perror("open_rsm_sem");
-		else
-			printf("rsm[%d] od = %d\n", i, ctx->od[i]);
+		if(!USE_PRIOQ) {
+			ctx->od[i] = open_fifo_sem(ctx->fd, i + ctx->kexclu + 2);
+			if(ctx->od[i] < 0)
+				perror("open_fifo_sem");
+			else
+				printf("fifo[%d] od = %d\n", i, ctx->od[i]);
+		}
+		else {
+			ctx->od[i] = open_prioq_sem(ctx->fd, i + ctx->kexclu + 2);
+			if(ctx->od[i] < 0)
+				perror("open_prioq_sem");
+			else
+				printf("prioq[%d] od = %d\n", i, ctx->od[i]);
+		}
 	}
 
 	TH_CALL( task_mode(LITMUS_RT_TASK) );
@@ -485,10 +501,6 @@ void* rt_thread(void* _ctx)
 	printf("[%d] Waiting for TS release.\n ", ctx->id);
 	wait_for_ts_release();
 	ctx->count = 0;
-
-//	if (ctx->id == 0 && NUM_AUX_THREADS) {
-//		CALL( enable_aux_rt_tasks() );
-//	}
 
 	do {
 		int first = (int)(NUM_SEMS * (rand_r(&(ctx->rand)) / (RAND_MAX + 1.0)));

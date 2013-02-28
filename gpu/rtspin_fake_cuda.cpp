@@ -59,6 +59,7 @@ bool USE_DYNAMIC_GROUP_LOCKS = false;
 bool BROADCAST_STATE = false;
 bool ENABLE_CHUNKING = false;
 bool MIGRATE_VIA_SYSMEM = false;
+bool USE_PRIOQ = false;
 
 int GPU_PARTITION = 0;
 int GPU_PARTITION_SIZE = 0;
@@ -378,37 +379,51 @@ static void allocate_locks()
 										 );
 	}
 	else {
-		KEXCLU_LOCK = open_ikglp_gpu_sem(fd,
+		KEXCLU_LOCK = open_gpusync_token_lock(fd,
 										 base_name,  /* name */
 										 GPU_PARTITION_SIZE,
 										 GPU_PARTITION*GPU_PARTITION_SIZE,
 										 NUM_SIMULT_USERS,
-										 ENABLE_AFFINITY,
-										 RELAX_FIFO_MAX_LEN
-										 );		
+										 IKGLP_M_IN_FIFOS,
+										 (!RELAX_FIFO_MAX_LEN) ?
+											  IKGLP_OPTIMAL_FIFO_LEN :
+											  IKGLP_UNLIMITED_FIFO_LEN,
+										 ENABLE_AFFINITY
+										 );
+//		KEXCLU_LOCK = open_ikglp_gpu_sem(fd,
+//										 base_name,  /* name */
+//										 GPU_PARTITION_SIZE,
+//										 GPU_PARTITION*GPU_PARTITION_SIZE,
+//										 NUM_SIMULT_USERS,
+//										 ENABLE_AFFINITY,
+//										 RELAX_FIFO_MAX_LEN
+//										 );		
 	}
 	if(KEXCLU_LOCK < 0)
 		perror("open_kexclu_sem");
 
 	if(NUM_SIMULT_USERS > 1)
 	{
+		open_sem_t opensem = (!USE_PRIOQ) ? open_fifo_sem : open_prioq_sem;
+		const char* opensem_label = (!USE_PRIOQ) ? "open_fifo_sem" : "open_prioq_sem";
+		
 		// allocate the engine locks.
 		for (int i = 0; i < MAX_GPUS; ++i)
 		{
-			EE_LOCKS[i] = open_rsm_sem(fd, (i+1)*10 + base_name);
+			EE_LOCKS[i] = opensem(fd, (i+1)*10 + base_name);
 			if(EE_LOCKS[i] < 0)
-				perror("open_rsm_sem");
+				perror(opensem_label);
 			
-			CE_SEND_LOCKS[i] = open_rsm_sem(fd, (i+1)*10 + base_name + 1);
+			CE_SEND_LOCKS[i] = opensem(fd, (i+1)*10 + base_name + 1);
 			if(CE_SEND_LOCKS[i] < 0)
-				perror("open_rsm_sem");			
+				perror(opensem_label);			
 			
 			if(NUM_SIMULT_USERS == 3)
 			{
 				// allocate a separate lock for the second copy engine
-				CE_RECV_LOCKS[i] = open_rsm_sem(fd, (i+1)*10 + base_name + 2);
+				CE_RECV_LOCKS[i] = opensem(fd, (i+1)*10 + base_name + 2);
 				if(CE_RECV_LOCKS[i] < 0)
-					perror("open_rsm_sem");					
+					perror(opensem_label);					
 			}
 			else
 			{
@@ -760,7 +775,7 @@ static int job(double exec_time, double gpu_sec_time, double program_end)
 	return 1;
 }
 
-#define OPTSTR "p:ls:e:g:G:W:N:S:R:T:BMaLyC:rz:"
+#define OPTSTR "p:ls:e:g:G:W:N:S:R:T:BMaLyC:rz:q"
 
 int main(int argc, char** argv)
 {
@@ -812,6 +827,9 @@ int main(int argc, char** argv)
 //			break;
 		case 'z':
 			NUM_SIMULT_USERS = atoi(optarg);
+			break;
+		case 'q':
+			USE_PRIOQ = true;
 			break;
 		case 'g':
 			GPU_TASK = 1;

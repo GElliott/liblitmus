@@ -17,44 +17,55 @@
 /* Include the LITMUS^RT API.*/
 #include "litmus.h"
 
+#define xfprintf( ... ) do { \
+if(!SILENT) { fprintf( __VA_ARGS__ ) ; } \
+} while (0)
+
+
 /* Catch errors.
  */
 #define CALL( exp ) do { \
 		int ret; \
 		ret = exp; \
 		if (ret != 0) \
-			fprintf(stderr, "%s failed: %m\n", #exp);\
+			xfprintf(stderr, "%s failed: %m\n", #exp);\
 		else \
-			fprintf(stderr, "%s ok.\n", #exp); \
+			xfprintf(stderr, "%s ok.\n", #exp); \
 	} while (0)
 
 #define TH_CALL( exp ) do { \
 		int ret; \
 		ret = exp; \
 		if (ret != 0) \
-			fprintf(stderr, "[%d] %s failed: %m\n", ctx->id, #exp); \
+			xfprintf(stderr, "[%d] %s failed: %m\n", ctx->id, #exp); \
 		else \
-			fprintf(stderr, "[%d] %s ok.\n", ctx->id, #exp); \
+			xfprintf(stderr, "[%d] %s ok.\n", ctx->id, #exp); \
 	} while (0)
 
 #define TH_SAFE_CALL( exp ) do { \
 		int ret; \
-		fprintf(stderr, "[%d] calling %s...\n", ctx->id, #exp); \
+		xfprintf(stderr, "[%d] calling %s...\n", ctx->id, #exp); \
 		ret = exp; \
 		if (ret != 0) \
-			fprintf(stderr, "\t...[%d] %s failed: %m\n", ctx->id, #exp); \
+			xfprintf(stderr, "\t...[%d] %s failed: %m\n", ctx->id, #exp); \
 		else \
-			fprintf(stderr, "\t...[%d] %s ok.\n", ctx->id, #exp); \
+			xfprintf(stderr, "\t...[%d] %s ok.\n", ctx->id, #exp); \
 	} while (0)
+
+
+
 
 
 /* these are only default values */
 int NUM_THREADS=3;
 int NUM_SEMS=1;
-int NUM_REPLICAS=1;
+unsigned int NUM_REPLICAS=0;
 int NEST_DEPTH=1;
 
+int SILENT = 0;
+
 int SLEEP_BETWEEN_JOBS = 1;
+int USE_PRIOQ = 0;
 
 #define MAX_SEMS 1000
 #define MAX_NEST_DEPTH 10
@@ -78,7 +89,7 @@ void* rt_thread(void* _ctx);
 int nested_job(struct thread_context* ctx, int *count, int *next);
 int job(struct thread_context*);
 
-#define OPTSTR "t:k:s:d:f"
+#define OPTSTR "t:k:s:d:fqX"
 
 int main(int argc, char** argv)
 {
@@ -107,6 +118,12 @@ int main(int argc, char** argv)
 				break;
 			case 'f':
 				SLEEP_BETWEEN_JOBS = 0;
+				break;
+			case 'q':
+				USE_PRIOQ = 1;
+				break;
+			case 'X':
+				SILENT = 1;
 				break;
 			default:
 				fprintf(stderr, "Unknown option: %c\n", opt);
@@ -150,26 +167,38 @@ void* rt_thread(void* _ctx)
 
 	/* Vary period a little bit. */
 	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, LITMUS_LOWEST_PRIORITY,
-							RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0) );
+							RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
 
-	ctx->ikglp = open_ikglp_sem(ctx->fd, 0, (void*)&NUM_REPLICAS);
-	if(ctx->ikglp < 0)
-		perror("open_ikglp_sem");
-	else
-		printf("ikglp od = %d\n", ctx->ikglp);
-
-	for (i = 0; i < NUM_SEMS; i++) {
-		ctx->od[i] = open_rsm_sem(ctx->fd, i+1);
-		if(ctx->od[i] < 0)
-			perror("open_rsm_sem");
+	if (NUM_REPLICAS) {
+		ctx->ikglp = open_ikglp_sem(ctx->fd, 0, NUM_REPLICAS);
+		if(ctx->ikglp < 0)
+			perror("open_ikglp_sem");
 		else
-			printf("rsm[%d] od = %d\n", i, ctx->od[i]);
+			xfprintf(stdout, "ikglp od = %d\n", ctx->ikglp);
+	}
+
+	
+	for (i = 0; i < NUM_SEMS; i++) {
+		if(!USE_PRIOQ) {
+			ctx->od[i] = open_fifo_sem(ctx->fd, i+1);
+			if(ctx->od[i] < 0)
+				perror("open_fifo_sem");
+			else
+				xfprintf(stdout, "fifo[%d] od = %d\n", i, ctx->od[i]);
+		}
+		else {
+			ctx->od[i] = open_prioq_sem(ctx->fd, i+1);
+			if(ctx->od[i] < 0)
+				perror("open_prioq_sem");
+			else
+				xfprintf(stdout, "prioq[%d] od = %d\n", i, ctx->od[i]);
+		}
 	}
 
 	TH_CALL( task_mode(LITMUS_RT_TASK) );
 
 
-	printf("[%d] Waiting for TS release.\n ", ctx->id);
+	xfprintf(stdout, "[%d] Waiting for TS release.\n ", ctx->id);
 	wait_for_ts_release();
 	ctx->count = 0;
 
@@ -186,27 +215,25 @@ void* rt_thread(void* _ctx)
 		}
 		
 		
-		replica = litmus_lock(ctx->ikglp);
-		printf("[%d] got ikglp replica %d.\n", ctx->id, replica);
-		fflush(stdout);
+		if(NUM_REPLICAS) {
+			replica = litmus_lock(ctx->ikglp);
+			xfprintf(stdout, "[%d] got ikglp replica %d.\n", ctx->id, replica);
+		}
 
 		
 		litmus_dgl_lock(dgl, dgl_size);
-		printf("[%d] acquired dgl.\n", ctx->id);
-		fflush(stdout);
-		
+		xfprintf(stdout, "[%d] acquired dgl.\n", ctx->id);
 		
 		do_exit = job(ctx);
 
 		
-		printf("[%d] unlocking dgl.\n", ctx->id);
-		fflush(stdout);		
+		xfprintf(stdout, "[%d] unlocking dgl.\n", ctx->id);
 		litmus_dgl_unlock(dgl, dgl_size);
 		
-		
-		printf("[%d]: freeing ikglp replica %d.\n", ctx->id, replica);
-		fflush(stdout);
-		litmus_unlock(ctx->ikglp);
+		if(NUM_REPLICAS) {		
+			xfprintf(stdout, "[%d]: freeing ikglp replica %d.\n", ctx->id, replica);
+			litmus_unlock(ctx->ikglp);
+		}
 
 		if(SLEEP_BETWEEN_JOBS && !do_exit) {
 			sleep_next_period();
