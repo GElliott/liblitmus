@@ -88,6 +88,34 @@ void show_rt_param(struct rt_task* tp)
 	       tp->exec_cost, tp->period, tp->cpu);
 }
 
+void init_rt_task_param(struct rt_task* tp)
+{
+	/* Defaults:
+	 *  - implicit deadline (t->relative_deadline == 0)
+	 *  - phase = 0
+	 *  - class = RT_CLASS_SOFT
+	 *  - budget policy = NO_ENFORCEMENT
+	 *  - fixed priority = LITMUS_LOWEST_PRIORITY
+	 *  - release policy = SPORADIC
+	 *  - cpu assignment = 0
+	 *
+	 * User must still set the following fields to non-zero values:
+	 *  - tp->exec_cost
+	 *  - tp->period
+	 *
+	 * User must set tp->cpu to the appropriate value for non-global
+	 * schedulers. For clusters, set tp->cpu to the first CPU in the
+	 * assigned cluster.
+	 */
+
+	memset(tp, 0, sizeof(*tp));
+
+	tp->cls = RT_CLASS_SOFT;
+	tp->priority = LITMUS_LOWEST_PRIORITY;
+	tp->budget_policy = NO_ENFORCEMENT;
+	tp->release_policy = SPORADIC;
+}
+
 task_class_t str2class(const char* str)
 {
 	if      (!strcmp(str, "hrt"))
@@ -102,57 +130,50 @@ task_class_t str2class(const char* str)
 
 #define NS_PER_MS 1000000
 
-/* only for best-effort execution: migrate to target_cpu */
-int be_migrate_to(int target_cpu)
-{
-	cpu_set_t cpu_set;
-
-	CPU_ZERO(&cpu_set);
-	CPU_SET(target_cpu, &cpu_set);
-	return sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set);
-}
-
-int sporadic_task(lt_t e, lt_t p, lt_t phase,
-		  int cpu, unsigned int priority,
-		  task_class_t cls,
-		  budget_policy_t budget_policy,
-		  budget_signal_policy_t budget_signal_policy,
-		  int set_cpu_set)
-{
-	return sporadic_task_ns(e * NS_PER_MS, p * NS_PER_MS, phase * NS_PER_MS,
-				cpu, priority, cls, budget_policy, budget_signal_policy,
-				set_cpu_set);
-}
-
-int sporadic_task_ns(lt_t e, lt_t p, lt_t phase,
-			int cpu, unsigned int priority,
-			task_class_t cls,
-			budget_policy_t budget_policy,
-			budget_signal_policy_t budget_signal_policy,
-			int set_cpu_set)
+int sporadic_global(lt_t e_ns, lt_t p_ns)
 {
 	struct rt_task param;
+
+	init_rt_task_param(&param);
+	param.exec_cost = e_ns;
+	param.period = p_ns;
+
+	return set_rt_task_param(gettid(), &param);
+}
+
+int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition)
+{
 	int ret;
+	struct rt_task param;
 
-	/* Zero out first --- this is helpful when we add plugin-specific
-	 * parameters during development.
-	 */
-	memset(&param, 0, sizeof(param));
+	ret = be_migrate_to_partition(partition);
+	check("be_migrate_to_partition()");
+	if (ret != 0)
+		return ret;
 
-	param.exec_cost = e;
-	param.period    = p;
-	param.relative_deadline = p; /* implicit deadline */
-	param.cpu       = cpu;
-	param.cls       = cls;
-	param.phase	= phase;
-	param.budget_policy = budget_policy;
-	param.budget_signal_policy = budget_signal_policy;
-	param.priority  = priority;
+	init_rt_task_param(&param);
+	param.exec_cost = e_ns;
+	param.period = p_ns;
+	param.cpu = partition_to_cpu(partition);
 
-	if (set_cpu_set) {
-		ret = be_migrate_to(cpu);
-		check("migrate to cpu");
-	}
+	return set_rt_task_param(gettid(), &param);
+}
+
+int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster, int cluster_size)
+{
+	int ret;
+	struct rt_task param;
+
+	ret = be_migrate_to_cluster(cluster, cluster_size);
+	check("be_migrate_to_cluster()");
+	if (ret != 0)
+		return ret;
+
+	init_rt_task_param(&param);
+	param.exec_cost = e_ns;
+	param.period = p_ns;
+	param.cpu = cluster_to_first_cpu(cluster, cluster_size);
+
 	return set_rt_task_param(gettid(), &param);
 }
 

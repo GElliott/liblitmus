@@ -40,11 +40,12 @@ int __launch_rt_task(rt_fn_t rt_prog, void *rt_arg, rt_setup_fn_t setup,
 	return rt_task;
 }
 
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period,
-		     unsigned int priority, task_class_t cls)
+int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
+		lt_t wcet, lt_t period, unsigned int priority, task_class_t cls)
 {
 	struct rt_task params;
-	params.cpu       = cpu;
+	init_rt_task_param(&params);
+	params.cpu       = cluster_to_first_cpu(cluster, cluster_size);
 	params.period    = period;
 	params.exec_cost = wcet;
 	params.cls       = cls;
@@ -57,9 +58,11 @@ int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period
 				(rt_setup_fn_t) set_rt_task_param, &params);
 }
 
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period,
-		   unsigned int priority) {
-	return __create_rt_task(rt_prog, arg, cpu, wcet, period, priority, RT_CLASS_HARD);
+int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
+		lt_t wcet, lt_t period, unsigned int prio)
+{
+	return __create_rt_task(rt_prog, arg, cluster, cluster_size, wcet, period,
+				prio, RT_CLASS_HARD);
 }
 
 

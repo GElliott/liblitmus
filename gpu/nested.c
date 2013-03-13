@@ -145,15 +145,20 @@ void* rt_thread(void* _ctx)
 {
 	int i;
 	int do_exit = 0;
+	struct rt_task param;
 
 	struct thread_context *ctx = (struct thread_context*)_ctx;
+
+	init_rt_task_param(&param);
+	param.exec_cost = EXEC_COST;
+	param.period = PERIOD + 10*ctx->id;
+	param.cls = RT_CLASS_SOFT;
 
 	/* Make presence visible. */
 	//printf("RT Thread %d active.\n", ctx->id);
 
 	TH_CALL( init_rt_thread() );
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0,
-		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+	TH_CALL( set_rt_task_param(gettid(), &param) );
 
 	for (i = 0; i < NUM_SEMS; i++) {
 		if (!USE_PRIOQ) {

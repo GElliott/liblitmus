@@ -64,11 +64,17 @@
 
 int main(int argc, char** argv)
 {
+	struct rt_task param;
+
+	init_rt_task_param(&param);
+	param.exec_cost = EXEC_COST;
+	param.period = PERIOD;
+	param.cls = RT_CLASS_SOFT;
+
 	CALL( init_litmus() );
 
 	CALL( init_rt_thread() );
-	CALL( sporadic_task_ns(EXEC_COST, PERIOD, 0, 0,
-		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+	CALL( set_rt_task_param(gettid(), &param) );
 	//CALL( task_mode(LITMUS_RT_TASK) );
 
 	fprintf(stdout, "Waiting for TS release.\n ");

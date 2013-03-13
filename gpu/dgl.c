@@ -160,14 +160,17 @@ void* rt_thread(void* _ctx)
 {
 	int i;
 	int do_exit = 0;
+	struct rt_task param;
 
 	struct thread_context *ctx = (struct thread_context*)_ctx;
 
-	TH_CALL( init_rt_thread() );
+	init_rt_task_param(&param);
+	param.exec_cost = EXEC_COST;
+	param.period = PERIOD + 10*ctx->id; /* Vary period a little bit. */
+	param.cls = RT_CLASS_SOFT;
 
-	/* Vary period a little bit. */
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0, LITMUS_LOWEST_PRIORITY,
-							RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+	TH_CALL( init_rt_thread() );
+	TH_CALL( set_rt_task_param(gettid(), &param) );
 
 	if (NUM_REPLICAS) {
 		ctx->ikglp = open_ikglp_sem(ctx->fd, 0, NUM_REPLICAS);

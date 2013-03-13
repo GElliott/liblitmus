@@ -193,6 +193,7 @@ int main(int argc, char** argv)
 	struct thread_context* aux_ctx = NULL;
 	pthread_t*	     task = NULL;
 	pthread_t*	     aux_task = NULL;
+	struct rt_task	param;
 	int fd;
 
 	int opt;
@@ -346,9 +347,13 @@ int main(int argc, char** argv)
 	}
 
 	if (NUM_AUX_THREADS) {
+		init_rt_task_param(&param);
+		param.exec_cost = EXEC_COST;
+		param.period = PERIOD + 10*NUM_THREADS+1;
+		param.cls = RT_CLASS_SOFT;
+
 		TH_CALL( init_rt_thread() );
-		TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*NUM_THREADS+1, 0, 0,
-			LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+		TH_CALL( set_rt_task_param(gettid(), &param) );
 		TH_CALL( task_mode(LITMUS_RT_TASK) );
 
 		printf("[MASTER] Waiting for TS release.\n ");
@@ -442,14 +447,17 @@ void* rt_thread(void* _ctx)
 	int i;
 	int do_exit = 0;
 	int last_replica = -1;
+	struct rt_task param;
 
 	struct thread_context *ctx = (struct thread_context*)_ctx;
 
-	TH_CALL( init_rt_thread() );
+	init_rt_task_param(&param);
+	param.exec_cost = EXEC_COST;
+	param.period = PERIOD + 10*ctx->id; /* Vary period a little bit. */
+	param.cls = RT_CLASS_SOFT;
 
-	/* Vary period a little bit. */
-	TH_CALL( sporadic_task_ns(EXEC_COST, PERIOD + 10*ctx->id, 0, 0,
-		LITMUS_LOWEST_PRIORITY, RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1) );
+	TH_CALL( init_rt_thread() );
+	TH_CALL( set_rt_task_param(gettid(), &param) );
 
 	if(USE_KFMLP) {
 		ctx->kexclu = open_kfmlp_gpu_sem(ctx->fd,

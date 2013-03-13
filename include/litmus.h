@@ -18,52 +18,34 @@ extern "C" {
 
 #include "asm/cycles.h" /* for null_call() */
 
-typedef int pid_t;	 /* PID of a task */
+#include "migration.h"
 
-/* obtain the PID of a thread */
-pid_t gettid(void);
-
-/* migrate to partition */
-int be_migrate_to(int target_cpu);
-
+void init_rt_task_param(struct rt_task* param);
 int set_rt_task_param(pid_t pid, struct rt_task* param);
 int get_rt_task_param(pid_t pid, struct rt_task* param);
 
-/* setup helper */
-
-/* Times are given in ms. The 'priority' parameter
- * is only relevant under fixed-priority scheduling (and
- * ignored by other plugins). The task_class_t parameter
- * is ignored by most plugins.
+/* Release-master-aware functions for getting the first
+ * CPU in a particular cluster or partition. Use these
+ * to set rt_task::cpu for cluster/partitioned scheduling.
  */
-int sporadic_task(
-		lt_t e, lt_t p, lt_t phase,
-		int partition, unsigned int priority,
-		task_class_t cls,
-		budget_policy_t budget_policy,
-		budget_signal_policy_t budget_signal_policy,
-		int set_cpu_set);
+int partition_to_cpu(int partition);
+int cluster_to_first_cpu(int cluster, int cluster_size);
 
-/* Times are given in ns. The 'priority' parameter
- * is only relevant under fixed-priority scheduling (and
- * ignored by other plugins). The task_class_t parameter
- * is ignored by most plugins.
- */
-int sporadic_task_ns(
-		lt_t e, lt_t p, lt_t phase,
-		int cpu, unsigned int priority,
-		task_class_t cls,
-		budget_policy_t budget_policy,
-		budget_signal_policy_t budget_signal_policy,
-		int set_cpu_set);
+/* Convenience functions for setting up real-time tasks.
+ * Default behaviors set by init_rt_task_params() used.
+ * Also sets affinity masks for clustered/partitions
+ * functions. Time units in nanoseconds. */
+int sporadic_global(lt_t e_ns, lt_t p_ns);
+int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition);
+int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster, int cluster_size);
 
-/* Convenience macros. Budget enforcement off by default in these macros. */
-#define sporadic_global(e, p) \
-	sporadic_task(e, p, 0, 0, LITMUS_LOWEST_PRIORITY, \
-		RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 0)
-#define sporadic_partitioned(e, p, cpu) \
-	sporadic_task(e, p, 0, cpu, LITMUS_LOWEST_PRIORITY, \
-		RT_CLASS_SOFT, NO_ENFORCEMENT, NO_SIGNALS, 1)
+/* simple time unit conversion macros */
+#define s2ns(s)   ((s)*1000000000LL)
+#define s2us(s)   ((s)*1000000LL)
+#define s2ms(s)   ((s)*1000LL)
+#define ms2ns(ms) ((ms)*1000000LL)
+#define ms2us(ms) ((ms)*1000LL)
+#define us2ns(us) ((us)*1000LL)
 
 /* file descriptor attached shared objects support */
 typedef enum  {
@@ -100,7 +82,7 @@ static inline int od_open(int fd, obj_type_t type, int obj_id)
 int litmus_open_lock(
 	obj_type_t protocol,	/* which locking protocol to use, e.g., FMLP_SEM */
 	int lock_id,		/* numerical id of the lock, user-specified */
-	const char* namespace,	/* path to a shared file */
+	const char* ns,	/* path to a shared file */
 	void *config_param);	/* any extra info needed by the protocol (such
 				 * as CPU under SRP and PCP), may be NULL */
 
@@ -135,10 +117,14 @@ void exit_litmus(void);
 /* A real-time program. */
 typedef int (*rt_fn_t)(void*);
 
-/* These two functions configure the RT task to use enforced exe budgets */
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period, unsigned int prio);
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet,
-		     lt_t period, unsigned int priority, task_class_t cls);
+/* These two functions configure the RT task to use enforced exe budgets.
+ * Partitioned scheduling: cluster = desired partition, cluster_size = 1
+ * Global scheduling: cluster = 0, cluster_size = 0
+ */
+int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
+			lt_t wcet, lt_t period, unsigned int prio);
+int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
+			lt_t wcet, lt_t period, unsigned int prio, task_class_t cls);
 
 /*	per-task modes */
 enum rt_task_mode_t {
@@ -162,16 +148,8 @@ int release_ts(lt_t *delay);
 int get_nr_ts_release_waiters(void);
 int read_litmus_stats(int *ready, int *total);
 
-
 int enable_aux_rt_tasks(int flags);
 int disable_aux_rt_tasks(int flags);
-
-#define __NS_PER_MS 1000000
-
-static inline lt_t ms2lt(unsigned long milliseconds)
-{
-	return __NS_PER_MS * milliseconds;
-}
 
 /* sleep for some number of nanoseconds */
 int lt_sleep(lt_t timeout);
