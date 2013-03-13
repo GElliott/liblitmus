@@ -1,4 +1,4 @@
-/* based_mt_task.c -- A basic multi-threaded real-time task skeleton. 
+/* based_mt_task.c -- A basic multi-threaded real-time task skeleton.
  *
  * This (by itself useless) task demos how to setup a multi-threaded LITMUS^RT
  * real-time task. Familiarity with the single threaded example (base_task.c)
@@ -48,7 +48,7 @@ struct thread_context {
 void* rt_thread(void *tcontext);
 void* aux_thread(void *tcontext);
 
-/* Declare the periodically invoked job. 
+/* Declare the periodically invoked job.
  * Returns 1 -> task should exit.
  *         0 -> task should continue.
  */
@@ -112,7 +112,7 @@ int main(int argc, char** argv)
 
 	ctx = calloc(NUM_AUX_THREADS, sizeof(struct thread_context));
 	task = calloc(NUM_AUX_THREADS, sizeof(pthread_t));
-	
+
 	//lt_t delay = ms2lt(1000);
 
 	/*****
@@ -199,9 +199,9 @@ int main(int argc, char** argv)
 			printf("child %d: %fs\n", i, time);
 		}
 	}
-	
 
-	/***** 
+
+	/*****
 	 * 6) Clean up, maybe print results and stats, and exit.
 	 */
 	return 0;
@@ -271,7 +271,7 @@ void* rt_thread(void *tcontext)
 
 	wait_for_ts_release();
 
-	/* The task is now executing as a real-time task if the call didn't fail. 
+	/* The task is now executing as a real-time task if the call didn't fail.
 	 */
 
 
@@ -304,7 +304,7 @@ void* rt_thread(void *tcontext)
 	return ctx;
 }
 
-int job(void) 
+int job(void)
 {
 	/* Do real-time calculation. */
 

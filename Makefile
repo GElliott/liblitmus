@@ -19,7 +19,7 @@ LITMUS_KERNEL ?= ../litmus-rt
 # Internal configuration.
 
 # compiler flags
-flags-debug    = -Wall -Wdeclaration-after-statement -g
+flags-debug    = -O2 -Wall -Werror -g -Wdeclaration-after-statement
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
@@ -72,7 +72,8 @@ AR  := ${CROSS_COMPILE}${AR}
 
 all     = lib ${rt-apps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
-	  base_mt_task runtests nested locktest ikglptest dgl aux_threads normal_task
+	  base_mt_task uncache runtests \
+	  nested locktest ikglptest dgl aux_threads normal_task
 
 .PHONY: all lib clean dump-config TAGS tags cscope help
 
@@ -236,6 +237,9 @@ lib-normal_task = -lrt -pthread -lm
 
 obj-dgl = dgl.o common.o
 lib-dgl = -lrt -pthread
+
+obj-uncache = uncache.o
+lib-uncache = -lrt
 
 obj-release_ts = release_ts.o
 

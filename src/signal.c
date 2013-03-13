@@ -28,7 +28,7 @@ static void reg_litmus_signals(unsigned long litmus_sig_mask,
 {
 	int ret;
 
-	if (litmus_sig_mask | SIG_BUDGET_MASK) { 
+	if (litmus_sig_mask | SIG_BUDGET_MASK) {
 		ret = sigaction(SIG_BUDGET, pAction, NULL);
 		check("SIG_BUDGET");
 	}

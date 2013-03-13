@@ -119,7 +119,7 @@ char *h_state_data = 0;
 		mmap(NULL, s ,   \
 				PROT_READ | PROT_WRITE,  \
 				MAP_PRIVATE | MAP_ANONYMOUS | MAP_LOCKED,  \
-				-1, 0) 
+				-1, 0)
 #else
 #define c_malloc(s) malloc(s)
 #endif
@@ -144,38 +144,38 @@ cudaError_t cudaGetLastError()
 ////////////////////////////////////////////////////////////////////////
 
 struct ce_lock_state
-{	
+{
 	int locks[2];
 	size_t num_locks;
 	size_t budget_remaining;
 	bool locked;
-	
+
 	ce_lock_state(int device_a, enum cudaMemcpyKind kind, size_t size, int device_b = -1) {
 		num_locks = (device_a != -1) + (device_b != -1);
-		
+
 		if(device_a != -1) {
 			locks[0] = (kind == cudaMemcpyHostToDevice) ?
 			CE_SEND_LOCKS[device_a] : CE_RECV_LOCKS[device_a];
 		}
-		
+
 		if(device_b != -1) {
 			assert(kind == cudaMemcpyDeviceToDevice);
-			
+
 			locks[1] = CE_RECV_LOCKS[device_b];
-			
+
 			if(locks[1] < locks[0]) {
 				int temp = locks[1];
 				locks[1] = locks[0];
 				locks[0] = temp;
 			}
 		}
-		
+
 		if(!ENABLE_CHUNKING)
 			budget_remaining = size;
 		else
 			budget_remaining = CHUNK_SIZE;
 	}
-	
+
 	void lock() {
 		if(USE_DYNAMIC_GROUP_LOCKS) {
 			litmus_dgl_lock(locks, num_locks);
@@ -189,7 +189,7 @@ struct ce_lock_state
 		}
 		locked = true;
 	}
-	
+
 	void unlock() {
 		if(USE_DYNAMIC_GROUP_LOCKS) {
 			litmus_dgl_unlock(locks, num_locks);
@@ -204,15 +204,15 @@ struct ce_lock_state
 		}
 		locked = false;
 	}
-	
+
 	void refresh() {
 		budget_remaining = CHUNK_SIZE;
 	}
-	
+
 	bool budgetIsAvailable(size_t tosend) {
 		return(tosend >= budget_remaining);
 	}
-	
+
 	void decreaseBudget(size_t spent) {
 		budget_remaining -= spent;
 	}
@@ -225,53 +225,53 @@ cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 {
     cudaError_t ret = cudaSuccess;
     int remaining = count;
-    
+
     char* dst = (char*)a_dst;
     const char* src = (const char*)a_src;
-    
+
 	// disable chunking, if needed, by setting chunk_size equal to the
 	// amount of data to be copied.
 	int chunk_size = (ENABLE_CHUNKING) ? CHUNK_SIZE : count;
 	int i = 0;
-	
+
     while(remaining != 0)
     {
         int bytesToCopy = std::min(remaining, chunk_size);
-		
+
 		if(state && state->budgetIsAvailable(bytesToCopy) && state->locked) {
 			//cutilSafeCall( cudaStreamSynchronize(streams[CUR_DEVICE]) );
 			ret = cudaGetLastError();
-			
+
 			if(ret != cudaSuccess)
 			{
 				break;
 			}
-			
+
 			state->unlock();
 			state->refresh(); // replentish.
 							  // we can only run out of
 							  // budget if chunking is enabled.
 							  // we presume that init budget would
 							  // be set to cover entire memcpy
-							  // if chunking were disabled.			
+							  // if chunking were disabled.
 		}
-		
+
 		if(state && !state->locked) {
 			state->lock();
 		}
-		
+
         //ret = cudaMemcpy(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind);
 		//cudaMemcpyAsync(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind, streams[CUR_DEVICE]);
 
 		if(state) {
 			state->decreaseBudget(bytesToCopy);
 		}
-		
+
 //		if(ret != cudaSuccess)
 //		{
 //			break;
-//		}		
-		
+//		}
+
         ++i;
         remaining -= bytesToCopy;
     }
@@ -281,7 +281,7 @@ cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 						enum cudaMemcpyKind kind,
 						int device_a = -1,  // device_a == -1 disables locking
-						bool do_locking = true, 
+						bool do_locking = true,
 						int device_b = -1)
 {
 	cudaError_t ret;
@@ -317,7 +317,7 @@ inline uint64_t timespec_to_ns(const struct timespec& t)
 inline struct timespec ns_to_timespec(const uint64_t& ns)
 {
 	struct timespec temp = {ns/1e9, ns - ns/1e9};
-	return(temp);	
+	return(temp);
 }
 
 inline uint64_t clock_gettime_ns(clockid_t clk_id)
@@ -366,9 +366,9 @@ static void allocate_locks()
 {
 	// allocate k-FMLP lock
 	int fd = open("semaphores", O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR);
-	
+
 	int base_name = GPU_PARTITION * 1000;
-	
+
 	if(USE_KFMLP) {
 		KEXCLU_LOCK = open_kfmlp_gpu_sem(fd,
 										 base_name,  /* name */
@@ -397,7 +397,7 @@ static void allocate_locks()
 //										 NUM_SIMULT_USERS,
 //										 ENABLE_AFFINITY,
 //										 RELAX_FIFO_MAX_LEN
-//										 );		
+//										 );
 	}
 	if(KEXCLU_LOCK < 0)
 		perror("open_kexclu_sem");
@@ -406,31 +406,31 @@ static void allocate_locks()
 	{
 		open_sem_t opensem = (!USE_PRIOQ) ? open_fifo_sem : open_prioq_sem;
 		const char* opensem_label = (!USE_PRIOQ) ? "open_fifo_sem" : "open_prioq_sem";
-		
+
 		// allocate the engine locks.
 		for (int i = 0; i < MAX_GPUS; ++i)
 		{
 			EE_LOCKS[i] = opensem(fd, (i+1)*10 + base_name);
 			if(EE_LOCKS[i] < 0)
 				perror(opensem_label);
-			
+
 			CE_SEND_LOCKS[i] = opensem(fd, (i+1)*10 + base_name + 1);
 			if(CE_SEND_LOCKS[i] < 0)
-				perror(opensem_label);			
-			
+				perror(opensem_label);
+
 			if(NUM_SIMULT_USERS == 3)
 			{
 				// allocate a separate lock for the second copy engine
 				CE_RECV_LOCKS[i] = opensem(fd, (i+1)*10 + base_name + 2);
 				if(CE_RECV_LOCKS[i] < 0)
-					perror(opensem_label);					
+					perror(opensem_label);
 			}
 			else
 			{
 				// share a single lock for the single copy engine
 				CE_RECV_LOCKS[i] = CE_SEND_LOCKS[i];
 			}
-		}		
+		}
 	}
 }
 
@@ -449,22 +449,22 @@ static void allocate_host_memory()
 //		h_send_data = (char *)c_malloc(send_alloc_bytes);
 //		memset(h_send_data, 0x55, send_alloc_bytes);  // write some random value
 //		// this will open a connection to GPU 0 if there is no active context, so
-//		// expect long stalls.  LAME.	
+//		// expect long stalls.  LAME.
 //		cutilSafeCall( cudaHostRegister(h_send_data, send_alloc_bytes, cudaHostRegisterPortable) );
 //	}
-//	
+//
 //	if(recv_alloc_bytes > 0)
-//	{	
+//	{
 //		h_recv_data = (char *)c_malloc(recv_alloc_bytes);
 //		memset(h_recv_data, 0xAA, recv_alloc_bytes);
-//		cutilSafeCall( cudaHostRegister(h_recv_data, recv_alloc_bytes, cudaHostRegisterPortable) );	
+//		cutilSafeCall( cudaHostRegister(h_recv_data, recv_alloc_bytes, cudaHostRegisterPortable) );
 //	}
-//	
+//
 //	if(state_alloc_bytes > 0)
-//	{		
+//	{
 //		h_state_data = (char *)c_malloc(state_alloc_bytes);
 //		memset(h_state_data, 0xCC, state_alloc_bytes);  // write some random value
-//		cutilSafeCall( cudaHostRegister(h_state_data, state_alloc_bytes, cudaHostRegisterPortable) );	
+//		cutilSafeCall( cudaHostRegister(h_state_data, state_alloc_bytes, cudaHostRegisterPortable) );
 //	}
 
 	printf("Host memory allocated.\n");
@@ -477,28 +477,28 @@ static void allocate_device_memory()
 //	for(int i = 0; i < GPU_PARTITION_SIZE; ++i)
 //	{
 //		int which_device = GPU_PARTITION*GPU_PARTITION_SIZE + i;
-//		
+//
 //		if(ENABLE_WAIT) gpu_mgmt_mutexes[which_device].lock();
-//		
+//
 //		cutilSafeCall( cudaSetDevice(which_device) );
 //		cutilSafeCall( cudaDeviceSetLimit(cudaLimitPrintfFifoSize, 0) );
 //		cutilSafeCall( cudaDeviceSetLimit(cudaLimitMallocHeapSize, 0) );
-//		
+//
 //		cutilSafeCall( cudaStreamCreate(&streams[which_device]) );
-//		
+//
 //		/* pre-allocate memory, pray there's enough to go around */
 //		if(SEND_SIZE > 0) {
-//			cutilSafeCall( cudaMalloc((void**)&d_send_data[which_device], SEND_SIZE) );	
+//			cutilSafeCall( cudaMalloc((void**)&d_send_data[which_device], SEND_SIZE) );
 //		}
 //		if(RECV_SIZE > 0) {
 //			cutilSafeCall( cudaMalloc((void**)&h_recv_data[which_device], RECV_SIZE) );
 //		}
 //		if(STATE_SIZE > 0) {
 //			cutilSafeCall( cudaMalloc((void**)&h_state_data[which_device], STATE_SIZE) );
-//		}		
-//		
+//		}
+//
 //		if(ENABLE_WAIT) gpu_mgmt_mutexes[which_device].unlock();
-//	}	
+//	}
 	printf("Device memory allocated.\n");
 }
 
@@ -508,39 +508,39 @@ static void configure_gpus()
 
 //	// SUSPEND WHEN BLOCKED!!
 //	cutilSafeCall( cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync) );
-//	
+//
 //	// establish a connection to each GPU.
 //	for(int i = 0; i < GPU_PARTITION_SIZE; ++i)
 //	{
 //		int which_device = GPU_PARTITION*GPU_PARTITION_SIZE + i;
-//		
+//
 //		if(ENABLE_WAIT) gpu_mgmt_mutexes[which_device].lock();
-//		
+//
 //		cutilSafeCall( cudaSetDevice(which_device) );
 //		cutilSafeCall( cudaDeviceSetLimit(cudaLimitPrintfFifoSize, 0) );
 //		cutilSafeCall( cudaDeviceSetLimit(cudaLimitMallocHeapSize, 0) );
-//		
+//
 //		cutilSafeCall( cudaStreamCreate(&streams[which_device]) );
-//		
+//
 //		// enable P2P migrations.
 //		// we assume all GPUs are on the same I/O hub.
 //		for(int j = 0; j < GPU_PARTITION_SIZE; ++j)
 //		{
 //			int other_device = GPU_PARTITION*GPU_PARTITION_SIZE + j;
-//			
+//
 //			if(which_device != other_device)
 //			{
 //				cutilSafeCall( cudaDeviceEnablePeerAccess(other_device, 0) );
 //			}
 //		}
-//		
+//
 //		if(i == 0)
 //		{
 //			struct cudaDeviceProp pi;
 //			cudaGetDeviceProperties(&pi, i);
 //			gpuCyclesPerSecond = pi.clockRate * 1000; /* khz -> hz */
-//		}		
-//		
+//		}
+//
 //		if(ENABLE_WAIT) gpu_mgmt_mutexes[which_device].unlock();
 //	}
 
@@ -580,7 +580,7 @@ static void catchExit(void)
 			for(int i = 0; i < GPU_PARTITION_SIZE; ++i)
 			{
 				int which_device = GPU_PARTITION*GPU_PARTITION_SIZE + i;
-				
+
 				litmus_unlock(EE_LOCKS[which_device]);
 				litmus_unlock(CE_SEND_LOCKS[which_device]);
 				if(NUM_SIMULT_USERS == 2) {
@@ -588,11 +588,11 @@ static void catchExit(void)
 				}
 			}
 		}
-		
+
 		if(CUR_DEVICE >= 0) {
 			unregister_nv_device(CUR_DEVICE);
 		}
-		
+
 		litmus_unlock(KEXCLU_LOCK);
 	}
 }
@@ -604,18 +604,18 @@ static void migrateToGPU(int destination)
 		if(MIGRATE_VIA_SYSMEM)
 		{
 			chunkMemcpy(h_state_data, d_state_data[LAST_DEVICE], STATE_SIZE,
-						cudaMemcpyDeviceToHost, LAST_DEVICE, useEngineLocks());			
+						cudaMemcpyDeviceToHost, LAST_DEVICE, useEngineLocks());
 		}
 	}
-	
-//	cutilSafeCall( cudaSetDevice(destination) );		
-	
+
+//	cutilSafeCall( cudaSetDevice(destination) );
+
 	if(!BROADCAST_STATE && STATE_SIZE > 0)
 	{
 		if(MIGRATE_VIA_SYSMEM)
 		{
 			chunkMemcpy(d_state_data[CUR_DEVICE], h_state_data, STATE_SIZE,
-						cudaMemcpyHostToDevice, CUR_DEVICE, useEngineLocks());			
+						cudaMemcpyHostToDevice, CUR_DEVICE, useEngineLocks());
 		}
 		else
 		{
@@ -633,15 +633,15 @@ static void migrateToGPU(int destination)
 static void broadcastState(int from)
 {
 	if(STATE_SIZE > 0)
-	{		
+	{
 		assert(CUR_DEVICE == from);
-		
+
 		if(MIGRATE_VIA_SYSMEM)
 		{
 			chunkMemcpy(h_state_data, d_state_data[from], STATE_SIZE,
 						cudaMemcpyDeviceToHost, from, useEngineLocks());
-		}	
-	
+		}
+
 		for(int i = 0; i < GPU_PARTITION_SIZE; ++i)
 		{
 			int which_device = GPU_PARTITION*GPU_PARTITION_SIZE + i;
@@ -652,7 +652,7 @@ static void broadcastState(int from)
 //					cutilSafeCall( cudaSetDevice(which_device) );
 					CUR_DEVICE = which_device; // temporary
 					chunkMemcpy(d_state_data[which_device], h_state_data, STATE_SIZE,
-								cudaMemcpyHostToDevice, which_device, useEngineLocks());					
+								cudaMemcpyHostToDevice, which_device, useEngineLocks());
 				}
 				else
 				{
@@ -662,11 +662,11 @@ static void broadcastState(int from)
 								cudaMemcpyDeviceToDevice,
 								from,
 								useEngineLocks(),
-								which_device);	
+								which_device);
 				}
 			}
 		}
-		
+
 		if(MIGRATE_VIA_SYSMEM && CUR_DEVICE != from)
 		{
 //			cutilSafeCall( cudaSetDevice(from) );
@@ -714,18 +714,18 @@ static void gpu_loop_for(double gpu_sec_time, double emergency_exit)
 		}
 
 		if(useEngineLocks()) litmus_lock(EE_LOCKS[CUR_DEVICE]);
-		
+
 //		docudaspin <<<numblocks,blocksz, 0, streams[CUR_DEVICE]>>> (numcycles);
 //		cutilSafeCall( cudaStreamSynchronize(streams[CUR_DEVICE]) );
-		
+
 		if(useEngineLocks()) litmus_unlock(EE_LOCKS[CUR_DEVICE]);
-		
+
 		if(RECV_SIZE > 0)
 		{
 			chunkMemcpy(h_recv_data, d_recv_data[CUR_DEVICE], RECV_SIZE,
 						cudaMemcpyDeviceToHost, CUR_DEVICE, useEngineLocks());
 		}
-		
+
 		if(BROADCAST_STATE)
 		{
 			broadcastState(CUR_DEVICE);
@@ -802,7 +802,7 @@ int main(int argc, char** argv)
 	int num_tasks = 0;
 
 	double gpu_sec_ms = 0;
-	
+
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
 //		printf("opt = %c optarg = %s\n", opt, optarg);
 		switch (opt) {
@@ -858,7 +858,7 @@ int main(int argc, char** argv)
 			break;
 		case 'r':
 			RELAX_FIFO_MAX_LEN = true;
-			break;				
+			break;
 		case 'L':
 			USE_KFMLP = true;
 			break;
@@ -949,13 +949,13 @@ int main(int argc, char** argv)
 		{
 			printf("%d creating release shared memory\n", getpid());
 			shared_memory_object::remove("release_barrier_memory");
-			release_segment_ptr = new managed_shared_memory(create_only, "release_barrier_memory", 4*1024);			
-			
+			release_segment_ptr = new managed_shared_memory(create_only, "release_barrier_memory", 4*1024);
+
 			printf("%d creating release barrier for %d users\n", getpid(), num_tasks);
 			release_barrier = release_segment_ptr->construct<barrier>("barrier release_barrier")(num_tasks);
-			
+
 			init_release_time = release_segment_ptr->construct<uint64_t>("uint64_t instance")();
-			*init_release_time = 0;		
+			*init_release_time = 0;
 		}
 		else
 		{
@@ -972,13 +972,13 @@ int main(int argc, char** argv)
 					sleep(1);
 				}
 			}while(segment_ptr == NULL);
-			
+
 			release_barrier = segment_ptr->find<barrier>("barrier release_barrier").first;
 			init_release_time = segment_ptr->find<uint64_t>("uint64_t instance").first;
 		}
 	}
-	
-	
+
+
 	if(GPU_TASK)
 	{
 		if(ENABLE_WAIT)
@@ -1019,7 +1019,7 @@ int main(int argc, char** argv)
 		SEND_SIZE *= scale;
 		RECV_SIZE *= scale;
 		STATE_SIZE *= scale;
-		
+
 		init_cuda();
 	}
 
@@ -1036,16 +1036,16 @@ int main(int argc, char** argv)
 	if (ret != 0)
 		bail_out("could not become RT task");
 
-	
-	
+
+
 	uint64_t jobCount = 0;
 	blitz::Array<uint64_t, 1> responseTimeLog(num_jobs+1);
-	
+
 	struct timespec spec;
 	uint64_t release;
 	uint64_t finish;
-		
-	
+
+
 	if (ENABLE_WAIT) {
 		printf("Waiting for release.\n");
 		ret = wait_for_ts_release();
@@ -1056,14 +1056,14 @@ int main(int argc, char** argv)
 	{
 		sleep_next_period();
 	}
-	
+
 	clock_gettime(CLOCK_MONOTONIC, &spec);
 	release = timespec_to_ns(spec);
 	if (!__sync_bool_compare_and_swap(init_release_time, 0, release))
 	{
 		release = *init_release_time;
 	}
-		
+
 	releaseTime = wctime();
 	double failsafeEnd = releaseTime + duration;
 
@@ -1087,7 +1087,7 @@ int main(int argc, char** argv)
 			clock_gettime(CLOCK_MONOTONIC, &spec);
 			finish = timespec_to_ns(spec);
 
-			responseTimeLog(min(num_jobs,jobCount++)) = finish - release;	
+			responseTimeLog(min(num_jobs,jobCount++)) = finish - release;
 
 			// this is an estimated upper-bound on release time.  it may be off by several microseconds.
 #ifdef RESET_RELEASE_ON_MISS
@@ -1097,11 +1097,11 @@ int main(int argc, char** argv)
 #else
 			release = release + period; // allow things to get progressively later.
 #endif
-			
+
 			sleep_next_period();
 			clock_gettime(CLOCK_MONOTONIC, &spec);
 			release = min(timespec_to_ns(spec), release);
-			
+
 		} while(keepGoing);
 	}
 
@@ -1147,13 +1147,13 @@ int main(int argc, char** argv)
 		}
 	}
 
-	
+
 	if (ENABLE_WAIT)
 	{
 		printf("%d waiting at exit barrier\n", getpid());
 		release_barrier->wait();
 	}
-	
+
 
 	char gpu_using_str[] = "GPU\n";
 	char cpu_only_str[] = "CPU\n";
@@ -1166,7 +1166,7 @@ int main(int argc, char** argv)
 		   // average
 		   blitz::mean(USED(responseTimeLog)),
 		   // average pct of period
-		   100.0*(blitz::mean(USED(responseTimeLog))/period),			   
+		   100.0*(blitz::mean(USED(responseTimeLog))/period),
 		   // min
 		   blitz::min(USED(responseTimeLog)),
 		   // max
@@ -1182,6 +1182,6 @@ int main(int argc, char** argv)
 		   // flag gpu-using tasks
 		   ((GPU_TASK) ? gpu_using_str : cpu_only_str)
 		   );
-	
+
 	return 0;
 }

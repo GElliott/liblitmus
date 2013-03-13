@@ -177,7 +177,7 @@ void* rt_thread(void* _ctx)
 			xfprintf(stdout, "ikglp od = %d\n", ctx->ikglp);
 	}
 
-	
+
 	for (i = 0; i < NUM_SEMS; i++) {
 		if(!USE_PRIOQ) {
 			ctx->od[i] = open_fifo_sem(ctx->fd, i+1);
@@ -208,29 +208,29 @@ void* rt_thread(void* _ctx)
 		int last = (first + NEST_DEPTH - 1 >= NUM_SEMS) ? NUM_SEMS - 1 : first + NEST_DEPTH - 1;
 		int dgl_size = last - first + 1;
 		int dgl[dgl_size];
-		
+
 		// construct the DGL
 		for(i = first; i <= last; ++i) {
 			dgl[i-first] = ctx->od[i];
 		}
-		
-		
+
+
 		if(NUM_REPLICAS) {
 			replica = litmus_lock(ctx->ikglp);
 			xfprintf(stdout, "[%d] got ikglp replica %d.\n", ctx->id, replica);
 		}
 
-		
+
 		litmus_dgl_lock(dgl, dgl_size);
 		xfprintf(stdout, "[%d] acquired dgl.\n", ctx->id);
-		
+
 		do_exit = job(ctx);
 
-		
+
 		xfprintf(stdout, "[%d] unlocking dgl.\n", ctx->id);
 		litmus_dgl_unlock(dgl, dgl_size);
-		
-		if(NUM_REPLICAS) {		
+
+		if(NUM_REPLICAS) {
 			xfprintf(stdout, "[%d]: freeing ikglp replica %d.\n", ctx->id, replica);
 			litmus_unlock(ctx->ikglp);
 		}
@@ -249,7 +249,7 @@ void* rt_thread(void* _ctx)
 	return NULL;
 }
 
-void dirty_kb(int kb) 
+void dirty_kb(int kb)
 {
 	int32_t one_kb[256];
 	int32_t sum = 0;

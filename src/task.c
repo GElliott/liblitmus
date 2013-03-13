@@ -40,15 +40,16 @@ int __launch_rt_task(rt_fn_t rt_prog, void *rt_arg, rt_setup_fn_t setup,
 	return rt_task;
 }
 
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, int wcet, int period,
-		     task_class_t rt_class)
+int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period,
+		     unsigned int priority, task_class_t cls)
 {
 	struct rt_task params;
 	params.cpu       = cpu;
 	params.period    = period;
 	params.exec_cost = wcet;
-	params.cls       = rt_class;
+	params.cls       = cls;
 	params.phase     = 0;
+	params.priority = priority;
 	/* enforce budget for tasks that might not use sleep_next_period() */
 	params.budget_policy = QUANTUM_ENFORCEMENT;
 
@@ -56,8 +57,9 @@ int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, int wcet, int period,
 				(rt_setup_fn_t) set_rt_task_param, &params);
 }
 
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, int wcet, int period) {
-	return __create_rt_task(rt_prog, arg, cpu, wcet, period, RT_CLASS_HARD);
+int create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period,
+		   unsigned int priority) {
+	return __create_rt_task(rt_prog, arg, cpu, wcet, period, priority, RT_CLASS_HARD);
 }
 
 

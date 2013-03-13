@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+
 
 #include <sched.h> /* for cpu sets */
 
@@ -32,7 +35,7 @@ static struct {
 	{IKGLP_GPU_AFF_OBS, "IKGLP-GPU"},
 	{KFMLP_SIMPLE_GPU_AFF_OBS, "KFMLP-GPU-SIMPLE"},
 	{KFMLP_GPU_AFF_OBS, "KFMLP-GPU"},
-	
+
 	{PRIOQ_MUTEX, "PRIOQ"},
 };
 
@@ -59,6 +62,23 @@ const char* name_for_lock_protocol(int id)
 
 	return "<UNKNOWN>";
 }
+
+int litmus_open_lock(
+	obj_type_t protocol,
+	int lock_id,
+	const char* namespace,
+	void *config_param)
+{
+	int fd, od;
+
+	fd = open(namespace, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	if (fd < 0)
+		return -1;
+	od = od_openx(fd, protocol, lock_id, config_param);
+	close(fd);
+	return od;
+}
+
 
 
 void show_rt_param(struct rt_task* tp)
@@ -171,7 +191,7 @@ int open_kfmlp_gpu_sem(int fd, int name,
 	unsigned int num_replicas;
 	struct gpu_affinity_observer_args aff_args;
 	int aff_type;
-	
+
 	// number of GPU tokens
 	num_replicas = num_gpus * rho;
 
@@ -181,20 +201,20 @@ int open_kfmlp_gpu_sem(int fd, int name,
 		perror("open_kfmlp_sem");
 		return -1;
 	}
-	
+
 	// create the affinity method to use.
 	// "no affinity" -> KFMLP_SIMPLE_GPU_AFF_OBS
 	aff_args.obs.lock_od = lock_od;
 	aff_args.replica_to_gpu_offset = gpu_offset;
 	aff_args.rho = rho;
-	
+
 	aff_type = (affinity_aware) ? KFMLP_GPU_AFF_OBS : KFMLP_SIMPLE_GPU_AFF_OBS;
 	affinity_od = od_openx(fd, aff_type, name+1, &aff_args);
 	if(affinity_od < 0) {
 		perror("open_kfmlp_aff");
 		return -1;
-	}	
-	
+	}
+
 	return lock_od;
 }
 
@@ -209,28 +229,28 @@ int open_kfmlp_gpu_sem(int fd, int name,
 //
 //	// number of GPU tokens
 //	num_replicas = num_gpus * num_simult_users;
-//	
+//
 //	// create the GPU token lock
 //	lock_od = open_ikglp_sem(fd, name, (void*)&num_replicas);
 //	if(lock_od < 0) {
 //		perror("open_ikglp_sem");
 //		return -1;
 //	}
-//	
+//
 //	// create the affinity method to use.
 //	// "no affinity" -> KFMLP_SIMPLE_GPU_AFF_OBS
 //	aff_args.obs.lock_od = lock_od;
 //	aff_args.replica_to_gpu_offset = gpu_offset;
 //	aff_args.nr_simult_users = num_simult_users;
 //	aff_args.relaxed_rules = (relax_max_fifo_len) ? 1 : 0;
-//	
+//
 //	aff_type = (affinity_aware) ? IKGLP_GPU_AFF_OBS : IKGLP_SIMPLE_GPU_AFF_OBS;
 //	affinity_od = od_openx(fd, aff_type, name+1, &aff_args);
 //	if(affinity_od < 0) {
 //		perror("open_ikglp_aff");
 //		return -1;
-//	}	
-//	
+//	}
+//
 //	return lock_od;
 //}
 
@@ -243,7 +263,7 @@ int open_ikglp_sem(int fd, int name, unsigned int nr_replicas)
 		.nr_replicas = nr_replicas,
 		.max_in_fifos = IKGLP_M_IN_FIFOS,
 		.max_fifo_len = IKGLP_OPTIMAL_FIFO_LEN};
-	
+
 	return od_openx(fd, IKGLP_SEM, name, &args);
 }
 
@@ -257,7 +277,7 @@ int open_gpusync_token_lock(int fd, int name,
 {
 	int lock_od;
 	int affinity_od;
-	
+
 	struct ikglp_args args = {
 		.nr_replicas = num_gpus*rho,
 		.max_in_fifos = max_in_fifos,
@@ -265,41 +285,37 @@ int open_gpusync_token_lock(int fd, int name,
 	};
 	struct gpu_affinity_observer_args aff_args;
 	int aff_type;
-	
+
 	if (!num_gpus || !rho) {
 		perror("open_gpusync_sem");
 		return -1;
 	}
-	
+
 	if ((max_in_fifos != IKGLP_UNLIMITED_IN_FIFOS) &&
 		(max_fifo_len != IKGLP_UNLIMITED_FIFO_LEN) &&
 		(max_in_fifos > args.nr_replicas * max_fifo_len)) {
 		perror("open_gpusync_sem");
 		return(-1);
 	}
-	
+
 	lock_od = od_openx(fd, IKGLP_SEM, name, &args);
 	if(lock_od < 0) {
 		perror("open_gpusync_sem");
 		return -1;
 	}
-	
+
 	// create the affinity method to use.
 	aff_args.obs.lock_od = lock_od;
 	aff_args.replica_to_gpu_offset = gpu_offset;
 	aff_args.rho = rho;
 	aff_args.relaxed_rules = (max_fifo_len == IKGLP_UNLIMITED_FIFO_LEN) ? 1 : 0;
-	
+
 	aff_type = (enable_affinity_heuristics) ? IKGLP_GPU_AFF_OBS : IKGLP_SIMPLE_GPU_AFF_OBS;
 	affinity_od = od_openx(fd, aff_type, name+1, &aff_args);
 	if(affinity_od < 0) {
 		perror("open_gpusync_affinity");
 		return -1;
 	}
-	
+
 	return lock_od;
 }
-
-
-
-

@@ -172,7 +172,7 @@ struct avg_info feedback(int _a, int _b)
 	}
 
 	stdev = sqrtf(devsum/(NUM_SAMPLES-1));
-	
+
 	ret.avg = avg;
 	ret.stdev = stdev;
 
@@ -189,10 +189,10 @@ struct avg_info feedback(int _a, int _b)
 int main(int argc, char** argv)
 {
 	int i;
-	struct thread_context* ctx;
-	struct thread_context* aux_ctx;
-	pthread_t*	     task;
-	pthread_t*	     aux_task;
+	struct thread_context* ctx = NULL;
+	struct thread_context* aux_ctx = NULL;
+	pthread_t*	     task = NULL;
+	pthread_t*	     aux_task = NULL;
 	int fd;
 
 	int opt;
@@ -291,7 +291,7 @@ int main(int argc, char** argv)
 			}
 		}
 	}
-	
+
 	printf("Best:\ta = %d\tb = %d\t(b-a) = %d\tavg = %6.2f\tstdev = %6.2f\n", best_a, best_b, best_b - best_a, best.avg, best.stdev);
 	printf("2nd:\ta = %d\tb = %d\t(b-a) = %d\tavg = %6.2f\tstdev = %6.2f\n", second_best_a, second_best_b, second_best_b - second_best_a, second_best.avg, second_best.stdev);
 
@@ -308,7 +308,7 @@ int main(int argc, char** argv)
 			}
 
 	printf("Aaron:\tavg = %6.2f\tstd = %6.2f\n", avg_accum/TRIALS, std_accum/TRIALS);
-	
+
 
 
 
@@ -385,7 +385,7 @@ int affinity_distance(struct thread_context* ctx, int a, int b)
 {
 	int i;
 	int dist;
-	
+
 	if(a >= 0 && b >= 0) {
 		for(i = 0; i <= 3; ++i) {
 			if(a>>i == b>>i) {
@@ -397,25 +397,25 @@ int affinity_distance(struct thread_context* ctx, int a, int b)
 	}
 	else {
 		dist = 0;
-	}	
-	
+	}
+
 out:
-	//printf("[%d]: distance: %d -> %d = %d\n", ctx->id, a, b, dist);	
-	
+	//printf("[%d]: distance: %d -> %d = %d\n", ctx->id, a, b, dist);
+
 	++(ctx->mig_count[dist]);
-	
+
 	return dist;
-	
+
 //	int groups[] = {2, 4, 8};
 //	int i;
-//	
+//
 //	if(a < 0 || b < 0)
 //		return (sizeof(groups)/sizeof(groups[0]));  // worst affinity
-//	
+//
 //	// no migration
 //	if(a == b)
 //		return 0;
-//	
+//
 //	for(i = 0; i < sizeof(groups)/sizeof(groups[0]); ++i) {
 //		if(a/groups[i] == b/groups[i])
 //			return (i+1);
@@ -441,7 +441,7 @@ void* rt_thread(void* _ctx)
 {
 	int i;
 	int do_exit = 0;
-	int last_replica = -1;	
+	int last_replica = -1;
 
 	struct thread_context *ctx = (struct thread_context*)_ctx;
 
@@ -472,13 +472,13 @@ void* rt_thread(void* _ctx)
 									  IKGLP_OPTIMAL_FIFO_LEN :
 									  IKGLP_UNLIMITED_FIFO_LEN,
 								ENABLE_AFFINITY
-								);	
+								);
 	}
 	if(ctx->kexclu < 0)
 		perror("open_kexclu_sem");
 	else
 		printf("kexclu od = %d\n", ctx->kexclu);
-	
+
 	for (i = 0; i < NUM_SEMS; ++i) {
 		if(!USE_PRIOQ) {
 			ctx->od[i] = open_fifo_sem(ctx->fd, i + ctx->kexclu + 2);
@@ -508,21 +508,21 @@ void* rt_thread(void* _ctx)
 		int dgl_size = last - first + 1;
 		int replica = -1;
 		int distance;
-		
-		int dgl[dgl_size];		
-		
+
+		int dgl[dgl_size];
+
 		// construct the DGL
 		for(i = first; i <= last; ++i) {
 			dgl[i-first] = ctx->od[i];
-		}		
-		
+		}
+
 		replica = litmus_lock(ctx->kexclu);
 
 		//printf("[%d] got kexclu replica %d.\n", ctx->id, replica);
 		//fflush(stdout);
 
 		distance = affinity_distance(ctx, replica, last_replica);
-		
+
 		if(USE_DYNAMIC_GROUP_LOCKS) {
 			litmus_dgl_lock(dgl, dgl_size);
 		}
@@ -531,24 +531,24 @@ void* rt_thread(void* _ctx)
 				litmus_lock(dgl[i]);
 			}
 		}
-		
+
 		//do_exit = nested_job(ctx, &count, &first, affinity_cost[distance]);
 		do_exit = job(ctx, affinity_cost[distance]);
-		
+
 		if(USE_DYNAMIC_GROUP_LOCKS) {
 			litmus_dgl_unlock(dgl, dgl_size);
 		}
 		else {
 			for(i = dgl_size - 1; i >= 0; --i) {
 				litmus_unlock(dgl[i]);
-			}			
-		}		
-		
+			}
+		}
+
 		//printf("[%d]: freeing kexclu replica %d.\n", ctx->id, replica);
 		//fflush(stdout);
 
 		litmus_unlock(ctx->kexclu);
-		
+
 		last_replica = replica;
 
 		if(SLEEP_BETWEEN_JOBS && !do_exit) {
@@ -567,7 +567,7 @@ void* rt_thread(void* _ctx)
 	 */
 	TH_CALL( task_mode(BACKGROUND_TASK) );
 
-	for(i = 0; i < sizeof(ctx->mig_count)/sizeof(ctx->mig_count[0]); ++i) 
+	for(i = 0; i < sizeof(ctx->mig_count)/sizeof(ctx->mig_count[0]); ++i)
 	{
 		printf("[%d]: mig_count[%d] = %d\n", ctx->id, i, ctx->mig_count[i]);
 	}
@@ -608,15 +608,15 @@ void* rt_thread(void* _ctx)
 //}
 
 
-void dirty_kb(int kb) 
-{	
+void dirty_kb(int kb)
+{
 	int32_t one_kb[256];
 	int32_t sum = 0;
 	int32_t i;
 
 	if(!kb)
-		return;	
-	
+		return;
+
 	for (i = 0; i < 256; i++)
 		sum += one_kb[i];
 	kb--;
@@ -630,9 +630,9 @@ void dirty_kb(int kb)
 int job(struct thread_context* ctx, int runfactor)
 {
 	//struct timespec tosleep = {0, 100000}; // 0.1 ms
-	
+
 	//printf("[%d]: runfactor = %d\n", ctx->id, runfactor);
-	
+
 	//dirty_kb(8 * runfactor);
 	dirty_kb(1 * runfactor);
 	//nanosleep(&tosleep, NULL);

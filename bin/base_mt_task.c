@@ -1,4 +1,4 @@
-/* based_mt_task.c -- A basic multi-threaded real-time task skeleton. 
+/* based_mt_task.c -- A basic multi-threaded real-time task skeleton.
  *
  * This (by itself useless) task demos how to setup a multi-threaded LITMUS^RT
  * real-time task. Familiarity with the single threaded example (base_task.c)
@@ -28,10 +28,10 @@
 
 #define NS_PER_MS         1e6
 
-/* Let's create 10 threads in the example, 
+/* Let's create 10 threads in the example,
  * for a total utilization of 1.
  */
-#define NUM_THREADS      10 
+#define NUM_THREADS      10
 
 /* The information passed to each thread. Could be anything. */
 struct thread_context {
@@ -43,7 +43,7 @@ struct thread_context {
  */
 void* rt_thread(void *tcontext);
 
-/* Declare the periodically invoked job. 
+/* Declare the periodically invoked job.
  * Returns 1 -> task should exit.
  *         0 -> task should continue.
  */
@@ -62,7 +62,7 @@ int job(void);
 	} while (0)
 
 
-/* Basic setup is the same as in the single-threaded example. However, 
+/* Basic setup is the same as in the single-threaded example. However,
  * we do some thread initiliazation first before invoking the job.
  */
 int main(int argc, char** argv)
@@ -71,7 +71,7 @@ int main(int argc, char** argv)
 	struct thread_context ctx[NUM_THREADS];
 	pthread_t             task[NUM_THREADS];
 
-	/* The task is in background mode upon startup. */		
+	/* The task is in background mode upon startup. */
 
 
 	/*****
@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 	 */
 
 
-       
+
 	/*****
 	 * 2) Work environment (e.g., global data structures, file data, etc.) would
 	 *    be setup here.
@@ -94,7 +94,7 @@ int main(int argc, char** argv)
 	init_litmus();
 
 
-	/***** 
+	/*****
 	 * 4) Launch threads.
 	 */
 	for (i = 0; i < NUM_THREADS; i++) {
@@ -102,15 +102,15 @@ int main(int argc, char** argv)
 		pthread_create(task + i, NULL, rt_thread, (void *) (ctx + i));
 	}
 
-	
+
 	/*****
 	 * 5) Wait for RT threads to terminate.
 	 */
 	for (i = 0; i < NUM_THREADS; i++)
 		pthread_join(task[i], NULL);
-	
 
-	/***** 
+
+	/*****
 	 * 6) Clean up, maybe print results and stats, and exit.
 	 */
 	return 0;
@@ -166,7 +166,7 @@ void* rt_thread(void *tcontext)
 	 */
 	CALL( task_mode(LITMUS_RT_TASK) );
 
-	/* The task is now executing as a real-time task if the call didn't fail. 
+	/* The task is now executing as a real-time task if the call didn't fail.
 	 */
 
 
@@ -178,11 +178,11 @@ void* rt_thread(void *tcontext)
 		/* Wait until the next job is released. */
 		sleep_next_period();
 		/* Invoke job. */
-		do_exit = job();		
+		do_exit = job();
 	} while (!do_exit);
 
 
-	
+
 	/*****
 	 * 4) Transition to background mode.
 	 */
@@ -194,7 +194,7 @@ void* rt_thread(void *tcontext)
 
 
 
-int job(void) 
+int job(void)
 {
 	/* Do real-time calculation. */
 

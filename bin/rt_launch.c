@@ -29,7 +29,7 @@ int launch(void *task_info_p) {
 }
 
 void usage(char *error) {
-	fprintf(stderr, "%s\nUsage: rt_launch [-w][-v][-p cpu][-c hrt | srt | be] wcet period program [arg1 arg2 ...]\n"
+	fprintf(stderr, "%s\nUsage: rt_launch [-w][-v][-p cpu][-q prio][-c hrt | srt | be] wcet period program [arg1 arg2 ...]\n"
 			"\t-w\tSynchronous release\n"
 			"\t-v\tVerbose\n"
 			"\t-p\tcpu (or initial cpu)\n"
@@ -41,9 +41,9 @@ void usage(char *error) {
 }
 
 
-#define OPTSTR "p:c:vw"
+#define OPTSTR "p:c:vwq:"
 
-int main(int argc, char** argv) 
+int main(int argc, char** argv)
 {
 	int ret;
 	lt_t wcet;
@@ -54,7 +54,8 @@ int main(int argc, char** argv)
 	int verbose = 0;
 	int wait = 0;
 	startup_info_t info;
-	task_class_t rt_class = RT_CLASS_HARD;
+	task_class_t cls = RT_CLASS_HARD;
+	unsigned int priority = LITMUS_LOWEST_PRIORITY;
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
 		switch (opt) {
@@ -68,9 +69,14 @@ int main(int argc, char** argv)
 			cpu = atoi(optarg);
 			migrate = 1;
 			break;
+		case 'q':
+			priority = atoi(optarg);
+			if (!litmus_is_valid_fixed_prio(priority))
+				usage("Invalid priority.");
+			break;
 		case 'c':
-			rt_class = str2class(optarg);
-			if (rt_class == -1)
+			cls = str2class(optarg);
+			if (cls == -1)
 				usage("Unknown task class.");
 			break;
 
@@ -87,7 +93,7 @@ int main(int argc, char** argv)
 	signal(SIGUSR1, SIG_IGN);
 
 	if (argc - optind < 3)
-		usage("Arguments missing.");       
+		usage("Arguments missing.");
 	wcet   = ms2lt(atoi(argv[optind + 0]));
 	period = ms2lt(atoi(argv[optind + 1]));
 	if (wcet <= 0)
@@ -107,13 +113,12 @@ int main(int argc, char** argv)
 		if (ret < 0)
 			bail_out("could not migrate to target partition");
 	}
-	ret = __create_rt_task(launch, &info, cpu, wcet, period, rt_class);
+	ret = __create_rt_task(launch, &info, cpu, wcet, period, priority, cls);
 
-	
 	if (ret < 0)
 		bail_out("could not create rt child process");
 	else if (verbose)
 		printf("%d\n", ret);
 
-	return 0;	
+	return 0;
 }

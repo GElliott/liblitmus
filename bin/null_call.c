@@ -16,7 +16,7 @@ static void time_null_call(void)
 	t2 = get_cycles();
 	if (ret != 0)
 		perror("null_call");
-	printf("%10" CYCLES_FMT ", " 
+	printf("%10" CYCLES_FMT ", "
 	       "%10" CYCLES_FMT ", "
 	       "%10" CYCLES_FMT ", "
 	       "%10" CYCLES_FMT ", "
@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 {
 	double delay;
 	struct timespec sleep_time;
-	
+
 	if (argc == 2) {
 		delay = atof(argv[1]);
 		sleep_time = sec2timespec(delay);

@@ -77,12 +77,12 @@ typedef enum  {
 	FIFO_MUTEX	= 6,
 	IKGLP_SEM	= 7,
 	KFMLP_SEM	= 8,
-	
+
 	IKGLP_SIMPLE_GPU_AFF_OBS = 9,
 	IKGLP_GPU_AFF_OBS = 10,
 	KFMLP_SIMPLE_GPU_AFF_OBS = 11,
 	KFMLP_GPU_AFF_OBS = 12,
-	
+
 	PRIOQ_MUTEX = 13,
 } obj_type_t;
 
@@ -97,6 +97,13 @@ static inline int od_open(int fd, obj_type_t type, int obj_id)
 	return od_openx(fd, type, obj_id, 0);
 }
 
+int litmus_open_lock(
+	obj_type_t protocol,	/* which locking protocol to use, e.g., FMLP_SEM */
+	int lock_id,		/* numerical id of the lock, user-specified */
+	const char* namespace,	/* path to a shared file */
+	void *config_param);	/* any extra info needed by the protocol (such
+				 * as CPU under SRP and PCP), may be NULL */
+
 /* real-time locking protocol support */
 int litmus_lock(int od);
 int litmus_unlock(int od);
@@ -109,7 +116,7 @@ int litmus_unlock(int od);
  *   litmus_dgl_unlock({A, B, C, D}, 4);
  */
 int litmus_dgl_lock(int* ods, int dgl_size);
-int litmus_dgl_unlock(int* ods, int dgl_size);	
+int litmus_dgl_unlock(int* ods, int dgl_size);
 
 /* nvidia graphics cards */
 int register_nv_device(int nv_device_id);
@@ -129,9 +136,9 @@ void exit_litmus(void);
 typedef int (*rt_fn_t)(void*);
 
 /* These two functions configure the RT task to use enforced exe budgets */
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, int wcet, int period);
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, int wcet,
-		     int period, task_class_t cls);
+int create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet, lt_t period, unsigned int prio);
+int __create_rt_task(rt_fn_t rt_prog, void *arg, int cpu, lt_t wcet,
+		     lt_t period, unsigned int priority, task_class_t cls);
 
 /*	per-task modes */
 enum rt_task_mode_t {
@@ -153,6 +160,7 @@ int wait_for_ts_release();
 int wait_for_ts_release2(struct timespec *release);
 int release_ts(lt_t *delay);
 int get_nr_ts_release_waiters(void);
+int read_litmus_stats(int *ready, int *total);
 
 
 int enable_aux_rt_tasks(int flags);
@@ -177,7 +185,7 @@ double wctime(void);
 /* semaphore allocation */
 
 typedef int (*open_sem_t)(int fd, int name);
-	
+
 static inline int open_fmlp_sem(int fd, int name)
 {
 	return od_open(fd, FMLP_SEM, name);
@@ -214,7 +222,7 @@ static inline int open_fifo_sem(int fd, int name)
 {
 	return od_open(fd, FIFO_MUTEX, name);
 }
-	
+
 static inline int open_prioq_sem(int fd, int name)
 {
 	return od_open(fd, PRIOQ_MUTEX, name);
@@ -228,7 +236,7 @@ int open_ikglp_sem(int fd, int name, unsigned int nr_replicas);
 int open_kfmlp_gpu_sem(int fd, int name,
 	unsigned int num_gpus, unsigned int gpu_offset, unsigned int rho,
 	int affinity_aware /* bool */);
-	
+
 /* -- Example Configurations --
  *
  * Optimal IKGLP Configuration:
@@ -262,13 +270,13 @@ int open_kfmlp_gpu_sem(int fd, int name,
  *  - rho > 0
  *  - num_gpus > 0
  */
-// takes names 'name' and 'name+1'	
+// takes names 'name' and 'name+1'
 int open_gpusync_token_lock(int fd, int name,
 		unsigned int num_gpus, unsigned int gpu_offset,
 		unsigned int rho, unsigned int max_in_fifos,
 		unsigned int max_fifo_len,
 		int enable_affinity_heuristics /* bool */);
-	
+
 /* syscall overhead measuring */
 int null_call(cycles_t *timestamp);
 
@@ -296,11 +304,11 @@ printf("%s:%d:%d\n",__FUNCTION__,__LINE__,temp); \
 __inject_action(temp); \
 }while(0);
 */
-	
+
 #define inject_action(COUNT) \
 do { \
 }while(0);
-	
+
 
 /* Litmus signal handling */
 

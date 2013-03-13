@@ -180,7 +180,7 @@ void* rt_thread(void* _ctx)
 		int first = (int)(NUM_SEMS * (rand_r(&(ctx->rand)) / (RAND_MAX + 1.0)));
 		int count = NEST_DEPTH;
 		do_exit = nested_job(ctx, &count, &first);
-		
+
 		if(SLEEP_BETWEEN_JOBS && !do_exit) {
 			sleep_next_period();
 		}
@@ -226,7 +226,7 @@ int nested_job(struct thread_context* ctx, int *count, int *next)
 
 
 
-void dirty_kb(int kb) 
+void dirty_kb(int kb)
 {
 	int32_t one_kb[256];
 	int32_t sum = 0;

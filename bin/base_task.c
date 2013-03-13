@@ -1,6 +1,6 @@
-/* based_task.c -- A basic real-time task skeleton. 
+/* based_task.c -- A basic real-time task skeleton.
  *
- * This (by itself useless) task demos how to setup a 
+ * This (by itself useless) task demos how to setup a
  * single-threaded LITMUS^RT real-time task.
  */
 
@@ -20,7 +20,7 @@
  */
 #include "litmus.h"
 
-/* Next, we define period and execution cost to be constant. 
+/* Next, we define period and execution cost to be constant.
  * These are only constants for convenience in this example, they can be
  * determined at run time, e.g., from command line parameters.
  *
@@ -44,13 +44,13 @@
 	} while (0)
 
 
-/* Declare the periodically invoked job. 
+/* Declare the periodically invoked job.
  * Returns 1 -> task should exit.
  *         0 -> task should continue.
  */
 int job(void);
 
-/* typically, main() does a couple of things: 
+/* typically, main() does a couple of things:
  * 	1) parse command line parameters, etc.
  *	2) Setup work environment.
  *	3) Setup real-time parameters.
@@ -60,7 +60,7 @@ int job(void);
  *	7) Clean up and exit.
  *
  * The following main() function provides the basic skeleton of a single-threaded
- * LITMUS^RT real-time task. In a real program, all the return values should be 
+ * LITMUS^RT real-time task. In a real program, all the return values should be
  * checked for errors.
  */
 int main(int argc, char** argv)
@@ -100,9 +100,9 @@ int main(int argc, char** argv)
 
 
 	/*****
-	 * 3) Setup real-time parameters. 
-	 *    In this example, we create a sporadic task that does not specify a 
-	 *    target partition (and thus is intended to run under global scheduling). 
+	 * 3) Setup real-time parameters.
+	 *    In this example, we create a sporadic task that does not specify a
+	 *    target partition (and thus is intended to run under global scheduling).
 	 *    If this were to execute under a partitioned scheduler, it would be assigned
 	 *    to the first partition (since partitioning is performed offline).
 	 */
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 	 */
 	CALL( task_mode(LITMUS_RT_TASK) );
 
-	/* The task is now executing as a real-time task if the call didn't fail. 
+	/* The task is now executing as a real-time task if the call didn't fail.
 	 */
 
 
@@ -136,11 +136,11 @@ int main(int argc, char** argv)
 		/* Wait until the next job is released. */
 		sleep_next_period();
 		/* Invoke job. */
-		do_exit = job();		
+		do_exit = job();
 	} while (!do_exit);
 
 
-	
+
 	/*****
 	 * 6) Transition to background mode.
 	 */
@@ -148,14 +148,14 @@ int main(int argc, char** argv)
 
 
 
-	/***** 
+	/*****
 	 * 7) Clean up, maybe print results and stats, and exit.
 	 */
 	return 0;
 }
 
 
-int job(void) 
+int job(void)
 {
 	/* Do real-time calculation. */
 

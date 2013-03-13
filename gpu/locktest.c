@@ -177,7 +177,7 @@ void* rt_thread(void* _ctx)
 	return NULL;
 }
 
-void dirty_kb(int kb) 
+void dirty_kb(int kb)
 {
 	int32_t one_kb[256];
 	int32_t sum = 0;
