@@ -20,6 +20,7 @@ LITMUS_KERNEL ?= ../litmus-rt
 
 # compiler flags
 flags-debug    = -O2 -Wall -Werror -g -Wdeclaration-after-statement
+flags-debug-cpp    = -O2 -Wall -Werror -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
@@ -49,7 +50,7 @@ LIBLITMUS ?= .
 headers = -I${LIBLITMUS}/include -I${LIBLITMUS}/arch/${include-${ARCH}}/include
 
 # combine options
-CPPFLAGS = ${flags-api} ${flags-misc} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
+CPPFLAGS = ${flags-api} ${flags-debug-cpp} ${flags-misc} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
 CFLAGS   = ${flags-debug} ${flags-misc}
 LDFLAGS  = ${flags-${ARCH}}
 
@@ -62,18 +63,24 @@ ifeq (${CC},cc)
 CC = gcc
 endif
 
+#ifeq (${CPP},cpp)
+CPP = g++
+#endif
+
 # incorporate cross-compiler (if any)
 CC  := ${CROSS_COMPILE}${CC}
+CPP  := ${CROSS_COMPILE}${CPP}
 LD  := ${CROSS_COMPILE}${LD}
 AR  := ${CROSS_COMPILE}${AR}
 
 # ##############################################################################
 # Targets
 
-all     = lib ${rt-apps}
+all     = lib ${rt-apps} ${rt-cppapps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
 	  base_mt_task uncache runtests \
 	  nested locktest ikglptest dgl aux_threads normal_task
+rt-cppapps = budget
 
 .PHONY: all lib clean dump-config TAGS tags cscope help
 
@@ -118,6 +125,7 @@ help:
 
 clean:
 	rm -f ${rt-apps}
+	rm -f ${rt-cppapps}
 	rm -f *.o *.d *.a test_catalog.inc
 	rm -f ${imported-headers}
 	rm -f inc/config.makefile
@@ -179,8 +187,7 @@ lib: liblitmus.a
 
 # all .c file in src/ are linked into liblitmus
 vpath %.c src/
-vpath %.c gpu/
-obj-lib = $(patsubst src/%.c,%.o,$(wildcard src/*.c)) $(patsubst gpu/%.c,%.o,$(wildcard gpu/*.c))
+obj-lib = $(patsubst src/%.c,%.o,$(wildcard src/*.c))
 
 liblitmus.a: ${obj-lib}
 	${AR} rcs $@ $+
@@ -246,6 +253,12 @@ obj-release_ts = release_ts.o
 obj-measure_syscall = null_call.o
 lib-measure_syscall = -lm
 
+
+vpath %.cpp gpu/
+
+objcpp-budget = budget.o common.o
+lib-budget = -lrt -lm -pthread
+
 # ##############################################################################
 # Build everything that depends on liblitmus.
 
@@ -253,17 +266,28 @@ lib-measure_syscall = -lm
 ${rt-apps}: $${obj-$$@} liblitmus.a
 	$(CC) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${liblitmus-flags} ${lib-$@}
 
+${rt-cppapps}: $${objcpp-$$@} liblitmus.a
+	$(CPP) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${liblitmus-flags} ${lib-$@}
+
 # ##############################################################################
 # Dependency resolution.
 
 vpath %.c bin/ src/ gpu/ tests/
+vpath %.cpp gpu/
 
 obj-all = ${sort ${foreach target,${all},${obj-${target}}}}
+obj-all += ${sort ${foreach target,${all},${objcpp-${target}}}}
 
 # rule to generate dependency files
 %.d: %.c ${imported-headers}
 	@set -e; rm -f $@; \
 		$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
+		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+		rm -f $@.$$$$
+
+%.d: %.cpp ${imported-headers}
+	@set -e; rm -f $@; \
+		$(CPP) -MM $(CPPFLAGS) $< > $@.$$$$; \
 		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
 		rm -f $@.$$$$
 
