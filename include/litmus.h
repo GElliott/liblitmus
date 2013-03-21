@@ -117,14 +117,8 @@ void exit_litmus(void);
 /* A real-time program. */
 typedef int (*rt_fn_t)(void*);
 
-/* These two functions configure the RT task to use enforced exe budgets.
- * Partitioned scheduling: cluster = desired partition, cluster_size = 1
- * Global scheduling: cluster = 0, cluster_size = 0
- */
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
-			lt_t wcet, lt_t period, unsigned int prio);
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
-			lt_t wcet, lt_t period, unsigned int prio, task_class_t cls);
+/* exec another program as a real-time task. */
+int create_rt_task(rt_fn_t rt_prog, void *arg, struct rt_task* param);
 
 /*	per-task modes */
 enum rt_task_mode_t {

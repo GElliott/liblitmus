@@ -42,7 +42,7 @@ void usage(char *error) {
 }
 
 
-#define OPTSTR "p:z:c:vwq:"
+#define OPTSTR "p:z:c:vwq:t"
 
 int main(int argc, char** argv)
 {
@@ -58,6 +58,8 @@ int main(int argc, char** argv)
 	startup_info_t info;
 	task_class_t cls = RT_CLASS_HARD;
 	unsigned int priority = LITMUS_LOWEST_PRIORITY;
+	budget_policy_t budget_pol = QUANTUM_ENFORCEMENT;
+	struct rt_task param;
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
 		switch (opt) {
@@ -84,7 +86,10 @@ int main(int argc, char** argv)
 			if (cls == -1)
 				usage("Unknown task class.");
 			break;
-
+		case 't':
+			/* use an hrtimer for budget enforcement */
+			budget_pol = PRECISE_ENFORCEMENT;
+			break;
 		case ':':
 			usage("Argument missing.");
 			break;
@@ -118,8 +123,18 @@ int main(int argc, char** argv)
 		if (ret < 0)
 			bail_out("could not migrate to target partition or cluster");
 	}
-	ret = __create_rt_task(launch, &info, cluster, cluster_size, wcet, period,
-				priority, cls);
+
+	init_rt_task_param(&param);
+	param.exec_cost = wcet;
+	param.period = period;
+	param.priority = priority;
+	param.cls = cls;
+	param.budget_policy = budget_pol;
+
+	if (migrate)
+		param.cpu = cluster_to_first_cpu(cluster, cluster_size);
+
+	ret = create_rt_task(launch, &info, &param);
 
 	if (ret < 0)
 		bail_out("could not create rt child process");

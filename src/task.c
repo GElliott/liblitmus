@@ -40,29 +40,16 @@ int __launch_rt_task(rt_fn_t rt_prog, void *rt_arg, rt_setup_fn_t setup,
 	return rt_task;
 }
 
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
-		lt_t wcet, lt_t period, unsigned int priority, task_class_t cls)
+int create_rt_task(rt_fn_t rt_prog, void *arg, struct rt_task* param)
 {
-	struct rt_task params;
-	init_rt_task_param(&params);
-	params.cpu       = cluster_to_first_cpu(cluster, cluster_size);
-	params.period    = period;
-	params.exec_cost = wcet;
-	params.cls       = cls;
-	params.phase     = 0;
-	params.priority = priority;
-	/* enforce budget for tasks that might not use sleep_next_period() */
-	params.budget_policy = QUANTUM_ENFORCEMENT;
+	if (param->budget_policy == NO_ENFORCEMENT) {
+		/* This is only safe if the task to be launched does not peg the CPU.
+		 That is, it must block frequently for I/O or call sleep_next_period()
+		 at the end of each job. Otherwise, the task may peg the CPU. */
+		//printf("Warning: running budget enforcement used.\n");
+	}
 
-	return __launch_rt_task(rt_prog, arg,
-				(rt_setup_fn_t) set_rt_task_param, &params);
-}
-
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
-		lt_t wcet, lt_t period, unsigned int prio)
-{
-	return __create_rt_task(rt_prog, arg, cluster, cluster_size, wcet, period,
-				prio, RT_CLASS_HARD);
+	return __launch_rt_task(rt_prog, arg, (rt_setup_fn_t) set_rt_task_param, param);
 }
 
 
