@@ -19,6 +19,12 @@ pid_t gettid(void)
 
 int set_rt_task_param(pid_t pid, struct rt_task *param)
 {
+	if (param->budget_signal_policy != NO_SIGNALS) {
+		/* drop all signals until they're explicitly activated by
+		 * user code. */
+		ignore_litmus_signals(SIG_BUDGET);
+	}
+
 	return syscall(__NR_set_rt_task_param, pid, param);
 }
 
