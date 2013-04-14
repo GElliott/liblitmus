@@ -24,6 +24,12 @@ flags-debug-cpp    = -O2 -Wall -Werror -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
+flags-cu-debug = -g -G -Xcompiler -Wall -Xcompiler -Werror
+flags-cu-optim = -O3 -Xcompiler -march=native
+flags-cu-nvcc = --use_fast_math -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30
+flags-cu-misc  = -Xcompiler -fasynchronous-unwind-tables -Xcompiler -fnon-call-exceptions -Xcompiler -malign-double -Xcompiler -pthread
+flags-cu-x86_64 = -m64
+
 # architecture-specific flags
 flags-i386     = -m32
 flags-x86_64   = -m64
@@ -51,11 +57,18 @@ headers = -I${LIBLITMUS}/include -I${LIBLITMUS}/arch/${include-${ARCH}}/include
 
 # combine options
 CPPFLAGS = ${flags-api} ${flags-debug-cpp} ${flags-misc} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
+#CUFLAGS  = ${flags-api} ${flags-cu-debug} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
+CUFLAGS  = ${flags-api} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
 CFLAGS   = ${flags-debug} ${flags-misc}
 LDFLAGS  = ${flags-${ARCH}}
 
 # how to link against liblitmus
 liblitmus-flags = -L${LIBLITMUS} -llitmus
+
+# how to link cuda
+cuda-flags-i386 = -L/usr/local/cuda/lib
+cuda-flags-x86_64 = -L/usr/local/cuda/lib64
+cuda-flags = ${cuda-flags-${ARCH}} -lcudart
 
 # Force gcc instead of cc, but let the user specify a more specific version if
 # desired.
@@ -67,20 +80,24 @@ endif
 CPP = g++
 #endif
 
+CU = nvcc
+
 # incorporate cross-compiler (if any)
 CC  := ${CROSS_COMPILE}${CC}
 CPP  := ${CROSS_COMPILE}${CPP}
 LD  := ${CROSS_COMPILE}${LD}
 AR  := ${CROSS_COMPILE}${AR}
+CU  := ${CROSS_COMPILE}${CU}
 
 # ##############################################################################
 # Targets
 
-all     = lib ${rt-apps} ${rt-cppapps}
+all     = lib ${rt-apps} ${rt-cppapps} ${rt-cuapps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
 	  base_mt_task uncache runtests \
 	  nested locktest ikglptest dgl aux_threads normal_task
 rt-cppapps = budget
+rt-cuapps = gpuspin
 
 .PHONY: all lib clean dump-config TAGS tags cscope help
 
@@ -95,10 +112,14 @@ inc/config.makefile: Makefile
 	@printf "%-15s= %-20s\n" \
 		ARCH ${ARCH} \
 		CFLAGS '${CFLAGS}' \
+		CPPFLAGS '${CPPFLAGS}' \
+		CUFLAGS '${CUFLAGS}' \
 		LDFLAGS '${LDFLAGS}' \
 		LDLIBS '${liblitmus-flags}' \
 		CPPFLAGS '${CPPFLAGS}' \
 		CC '${shell which ${CC}}' \
+		CPP '${shell which ${CPP}}' \
+		CU '${shell which ${CU}}' \
 		LD '${shell which ${LD}}' \
 		AR '${shell which ${AR}}' \
 	> $@
@@ -112,10 +133,12 @@ dump-config:
 		headers "${headers}" \
 		"kernel headers" "${imported-headers}" \
 		CFLAGS "${CFLAGS}" \
-		LDFLAGS "${LDFLAGS}" \
 		CPPFLAGS "${CPPFLAGS}" \
+		CUFLAGS "${CUFLAGS}" \
+		LDFLAGS "${LDFLAGS}" \
 		CC "${CC}" \
 		CPP "${CPP}" \
+		CU "${CU}" \
 		LD "${LD}" \
 		AR "${AR}" \
 		obj-all "${obj-all}"
@@ -124,8 +147,7 @@ help:
 	@cat INSTALL
 
 clean:
-	rm -f ${rt-apps}
-	rm -f ${rt-cppapps}
+	rm -f ${rt-apps} ${rt-cppapps} ${rt-cuapps}
 	rm -f *.o *.d *.a test_catalog.inc
 	rm -f ${imported-headers}
 	rm -f inc/config.makefile
@@ -259,6 +281,12 @@ vpath %.cpp gpu/
 objcpp-budget = budget.o common.o
 lib-budget = -lrt -lm -pthread
 
+
+vpath %.cu gpu/
+
+objcu-gpuspin = gpuspin.o common.o
+lib-gpuspin = -lrt -lm -lpthread
+
 # ##############################################################################
 # Build everything that depends on liblitmus.
 
@@ -269,14 +297,19 @@ ${rt-apps}: $${obj-$$@} liblitmus.a
 ${rt-cppapps}: $${objcpp-$$@} liblitmus.a
 	$(CPP) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${liblitmus-flags} ${lib-$@}
 
+${rt-cuapps}: $${objcu-$$@} liblitmus.a
+	$(CPP) -o $@ $(LDFLAGS) ${ldf-$@} $(filter-out liblitmus.a,$+) $(LOADLIBS) $(LDLIBS) ${liblitmus-flags} ${cuda-flags} ${lib-$@}
+
 # ##############################################################################
 # Dependency resolution.
 
 vpath %.c bin/ src/ gpu/ tests/
 vpath %.cpp gpu/
+vpath %.cu gpu/
 
 obj-all = ${sort ${foreach target,${all},${obj-${target}}}}
 obj-all += ${sort ${foreach target,${all},${objcpp-${target}}}}
+obj-all += ${sort ${foreach target,${all},${objcu-${target}}}}
 
 # rule to generate dependency files
 %.d: %.c ${imported-headers}
@@ -290,6 +323,16 @@ obj-all += ${sort ${foreach target,${all},${objcpp-${target}}}}
 		$(CPP) -MM $(CPPFLAGS) $< > $@.$$$$; \
 		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
 		rm -f $@.$$$$
+
+%.d: %.cu ${imported-headers}
+	@set -e; rm -f $@; \
+		$(CU) --generate-dependencies $(CUFLAGS) $< > $@.$$$$; \
+		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+		rm -f $@.$$$$
+
+# teach make how to compile .cu files
+%.o: %.cu
+	$(CU) --compile $(CUFLAGS) $(OUTPUT_OPTION) $<
 
 ifeq ($(MAKECMDGOALS),)
 MAKECMDGOALS += all

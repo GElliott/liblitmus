@@ -80,6 +80,28 @@ int SIGNALS = 0;
 int BLOCK_SIGNALS_ON_SLEEP = 0;
 int OVERRUN_RATE = 1; /* default: every job overruns */
 
+int CXS_OVERRUN = 0;
+int NUM_LOCKS = 1;
+int NUM_REPLICAS = 1;
+int NAMESPACE = 0;
+int *LOCKS = NULL;
+int IKGLP_LOCK = 0;
+int USE_DGLS = 0;
+int NEST_IN_IKGLP = 0;
+
+int WAIT = 0;
+
+enum eLockType
+{
+	FIFO,
+	PRIOQ,
+	IKGLP
+};
+
+eLockType LOCK_TYPE = FIFO;
+
+int OVERRUN_BY_SLEEP = 0;
+
 int NUM_JOBS = 0;
 int NUM_COMPLETED_JOBS = 0;
 int NUM_OVERRUNS = 0;
@@ -103,9 +125,32 @@ int job(lt_t exec_ns, lt_t budget_ns)
 				if (SIGNALS && BLOCK_SIGNALS_ON_SLEEP)
 					block_litmus_signals(SIG_BUDGET);
 
+				if(CXS_OVERRUN) {
+					if (NEST_IN_IKGLP)
+						litmus_lock(IKGLP_LOCK);
+					if (USE_DGLS)
+						litmus_dgl_lock(LOCKS, NUM_LOCKS);
+					else
+						for(int i = 0; i < NUM_LOCKS; ++i)
+							litmus_lock(LOCKS[i]);
+				}
+				
 				// intentionally overrun via suspension
-				lt_sleep(approx_remaining + overrun_extra);
+				if (OVERRUN_BY_SLEEP)
+					lt_sleep(approx_remaining + overrun_extra);
+				else
+					loop_for((approx_remaining + overrun_extra) * 0.9);
 
+				if(CXS_OVERRUN) {
+					if (USE_DGLS)
+						litmus_dgl_unlock(LOCKS, NUM_LOCKS);
+					else
+						for(int i = NUM_LOCKS-1; i >= 0; --i)
+							litmus_unlock(LOCKS[i]);						
+					if (NEST_IN_IKGLP)
+						litmus_unlock(IKGLP_LOCK);
+				}
+				
 				if (SIGNALS && BLOCK_SIGNALS_ON_SLEEP)
 					unblock_litmus_signals(SIG_BUDGET);
 			}
@@ -120,15 +165,18 @@ int job(lt_t exec_ns, lt_t budget_ns)
 	return 1;
 }
 
-#define OPTSTR "sboOva"
+#define OPTSTR "SbosOvalwqixdn:r:"
 
 int main(int argc, char** argv)
 {
 	int ret;
-	lt_t e_ns = ms2ns(10);
-	lt_t p_ns = ms2ns(100);
+
+	srand(getpid());
+
+	lt_t e_ns = ms2ns(2);
+	lt_t p_ns = ms2ns(50) + rand()%200;
 	lt_t budget_ns = p_ns/2;
-	lt_t duration = s2ns(10);
+	lt_t duration = s2ns(60);
 	lt_t terminate_time;
 	unsigned int first_job, last_job;
 	int opt;
@@ -140,11 +188,14 @@ int main(int argc, char** argv)
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
 		switch(opt) {
-		case 's':
+		case 'S':
 			SIGNALS = 1;
 			break;
 		case 'b':
 			BLOCK_SIGNALS_ON_SLEEP = 1;
+			break;
+		case 's':
+			OVERRUN_BY_SLEEP = 1;
 			break;
 		case 'o':
 			OVERRUN = 1;
@@ -164,6 +215,31 @@ int main(int argc, char** argv)
 		case 'v':
 			drain_policy = DRAIN_SOBLIV;
 			break;
+		case 'l':
+			CXS_OVERRUN = 1;
+			NAMESPACE = open("semaphores", O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR);
+			break;
+		case 'q':
+			LOCK_TYPE = PRIOQ;
+			break;
+		case 'i':
+			LOCK_TYPE = IKGLP;
+			break;
+		case 'x':
+			NEST_IN_IKGLP = 1;
+			break;
+		case 'w':
+			WAIT = 1;
+			break;
+		case 'd':
+			USE_DGLS = 1;
+			break;
+		case 'n':
+			NUM_LOCKS = atoi(optarg);
+			break;
+		case 'r':
+			NUM_REPLICAS = atoi(optarg);
+			break;
 		case ':':
 			printf("missing argument\n");
 			assert(false);
@@ -176,10 +252,21 @@ int main(int argc, char** argv)
 	}
 
 	assert(!BLOCK_SIGNALS_ON_SLEEP || (BLOCK_SIGNALS_ON_SLEEP && SIGNALS));
+	assert(!CXS_OVERRUN || (CXS_OVERRUN && WAIT));
+	assert(LOCK_TYPE != IKGLP || NUM_LOCKS == 1);
+	assert(LOCK_TYPE != IKGLP || (LOCK_TYPE == IKGLP && !NEST_IN_IKGLP));
+	assert(NUM_LOCKS > 0);
+	if (LOCK_TYPE == IKGLP || NEST_IN_IKGLP)
+		assert(NUM_REPLICAS >= 1);
+	
+	LOCKS = new int[NUM_LOCKS];
 
 	if (compute_overrun_rate) {
 		int backlog = (int)ceil((overrun_extra + budget_ns)/(double)budget_ns);
-		OVERRUN_RATE = backlog + 2; /* some padding */
+		if (!CXS_OVERRUN)
+			OVERRUN_RATE = backlog + 2; /* some padding */
+		else
+			OVERRUN_RATE = 2*backlog + 2; /* overrun less frequently for testing */
 	}
 
 	init_rt_task_param(&param);
@@ -197,6 +284,44 @@ int main(int argc, char** argv)
 	ret = set_rt_task_param(gettid(), &param);
 	assert(ret == 0);
 
+	if (CXS_OVERRUN) {
+		int i;
+		for(i = 0; i < NUM_LOCKS; ++i) {
+			int lock = -1;
+			switch(LOCK_TYPE)
+			{
+				case FIFO:
+					lock = open_fifo_sem(NAMESPACE, i);
+					break;
+				case PRIOQ:
+					lock = open_prioq_sem(NAMESPACE, i);
+					break;
+				case IKGLP:
+					lock = open_ikglp_sem(NAMESPACE, i, NUM_REPLICAS);
+					break;
+			}
+			if (lock < 0) {
+				perror("open_sem");
+				exit(-1);
+			}
+			LOCKS[i] = lock;
+		}
+		
+		if (NEST_IN_IKGLP) {
+			IKGLP_LOCK = open_ikglp_sem(NAMESPACE, i, NUM_REPLICAS);
+			if (IKGLP_LOCK < 0) {
+				perror("open_sem");
+				exit(-1);
+			}
+		}
+	}
+	
+	if (WAIT) {
+		ret = wait_for_ts_release();
+		if (ret < 0)
+			perror("wait_for_ts_release");
+	}
+	
 	ret = task_mode(LITMUS_RT_TASK);
 	assert(ret == 0);
 
@@ -231,5 +356,7 @@ int main(int argc, char** argv)
 	printf("# User Jobs Completed: %d\n", NUM_COMPLETED_JOBS);
 	printf("# Overruns: %d\n", NUM_OVERRUNS);
 
+	delete[] LOCKS;
+	
 	return 0;
 }
