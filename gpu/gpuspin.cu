@@ -118,7 +118,7 @@ static bool useEngineLocks()
 	return(USE_ENGINE_LOCKS);
 }
 
-#define VANILLA_LINUX
+//#define VANILLA_LINUX
 
 bool TRACE_MIGRATIONS = false;
 #ifndef VANILLA_LINUX
