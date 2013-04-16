@@ -165,7 +165,7 @@ int job(lt_t exec_ns, lt_t budget_ns)
 	return 1;
 }
 
-#define OPTSTR "SbosOvalwqixdn:r:"
+#define OPTSTR "SbosOvzalwqixdn:r:"
 
 int main(int argc, char** argv)
 {
@@ -214,6 +214,9 @@ int main(int argc, char** argv)
 			break;
 		case 'v':
 			drain_policy = DRAIN_SOBLIV;
+			break;
+		case 'z':
+			drain_policy = DRAIN_SIMPLE_IO;
 			break;
 		case 'l':
 			CXS_OVERRUN = 1;

@@ -57,8 +57,8 @@ headers = -I${LIBLITMUS}/include -I${LIBLITMUS}/arch/${include-${ARCH}}/include
 
 # combine options
 CPPFLAGS = ${flags-api} ${flags-debug-cpp} ${flags-misc} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
-#CUFLAGS  = ${flags-api} ${flags-cu-debug} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
-CUFLAGS  = ${flags-api} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
+CUFLAGS  = ${flags-api} ${flags-cu-debug} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
+#CUFLAGS  = ${flags-api} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
 CFLAGS   = ${flags-debug} ${flags-misc}
 LDFLAGS  = ${flags-${ARCH}}
 

@@ -66,6 +66,7 @@ int CE_MIGR_SEND_LOCKS[NR_GPUS];
 int CE_MIGR_RECV_LOCKS[NR_GPUS];
 bool RESERVED_MIGR_COPY_ENGINE = false;  // only checked if NUM_COPY_ENGINES == 2
 
+//bool ENABLE_RT_AUX_THREADS = false;
 bool ENABLE_RT_AUX_THREADS = true;
 
 enum eGpuSyncMode
@@ -874,8 +875,10 @@ static void catch_exit(int catch_exit)
 
 
 
+#ifdef VANILLA_LINUX
 static float ms_sum;
 static int gpucount = 0;
+#endif
 
 __global__ void docudaspin(float* data, /*unsigned int* iterations,*/ unsigned int num_elem, unsigned int cycles)
 {
@@ -915,29 +918,30 @@ __global__ void docudaspin(float* data, /*unsigned int* iterations,*/ unsigned i
 	return;
 }
 
-static void gpu_loop_for(double gpu_sec_time, double emergency_exit)
+static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double emergency_exit)
 {
 	int next_gpu;
-	
+
 	if (emergency_exit && wctime() > emergency_exit)
 		goto out;
 	
 	next_gpu = litmus_lock(TOKEN_LOCK);
 	{
 		MigrateIfNeeded(next_gpu);
-		
-		unsigned int numcycles = (unsigned int)(cur_hz() * gpu_sec_time);
-		
+		unsigned int numcycles = ((unsigned int)(cur_hz() * gpu_sec_time))/num_kernels;
+
 		if(SEND_SIZE > 0)
 			chunkMemcpy(this_gpu(d_state_data), h_send_data, SEND_SIZE,
 						cudaMemcpyHostToDevice, CUR_DEVICE, useEngineLocks());
 		
-		if(useEngineLocks()) litmus_lock(cur_ee());
-		/* one block per sm, one warp per block */
-		docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
-//		docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], d_iteration_count[cur_gpu()], cur_elem_per_thread(), numcycles);		
-		cudaStreamSynchronize(cur_stream());
-		if(useEngineLocks()) litmus_unlock(cur_ee());
+		for(unsigned int i = 0; i < num_kernels; ++i)
+		{
+			if(useEngineLocks()) litmus_lock(cur_ee());
+			/* one block per sm, one warp per block */
+			docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
+			cudaStreamSynchronize(cur_stream());
+			if(useEngineLocks()) litmus_unlock(cur_ee());
+		}
 		
 		if(RECV_SIZE > 0)
 			chunkMemcpy(h_recv_data, this_gpu(d_state_data), RECV_SIZE,
@@ -954,12 +958,13 @@ out:
 	return;
 }
 
-static void gpu_loop_for_linux(double gpu_sec_time, double emergency_exit)
+static void gpu_loop_for_linux(double gpu_sec_time, unsigned int num_kernels, double emergency_exit)
 {
 	static int GPU_OFFSET = GPU_PARTITION * GPU_PARTITION_SIZE;
 	static gpu_pool *pool = &GPU_LINUX_SEM_POOL[GPU_PARTITION];
 	static pthread_mutex_t *mutex = &GPU_LINUX_MUTEX_POOL[GPU_PARTITION];
 	
+#ifdef VANILLA_LINUX
 	static bool once = false;
 	static cudaEvent_t start, end;
 	float ms;
@@ -969,6 +974,7 @@ static void gpu_loop_for_linux(double gpu_sec_time, double emergency_exit)
 		cudaEventCreate(&start);
 		cudaEventCreate(&end);
 	}
+#endif
 
 	int next_gpu;
 	
@@ -979,29 +985,33 @@ static void gpu_loop_for_linux(double gpu_sec_time, double emergency_exit)
 	{
 		MigrateIfNeeded(next_gpu);
 		
-		unsigned int numcycles = (unsigned int)(cur_hz() * gpu_sec_time);
+		unsigned int numcycles = ((unsigned int)(cur_hz() * gpu_sec_time))/num_kernels;
 		
 		if(SEND_SIZE > 0)
 			chunkMemcpy(this_gpu(d_state_data), h_send_data, SEND_SIZE,
 						cudaMemcpyHostToDevice, cur_gpu(), useEngineLocks());
 		
-		/* one block per sm, one warp per block */
-		cudaEventRecord(start, cur_stream());
-		docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
-//		docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], d_iteration_count[cur_gpu()], cur_elem_per_thread(), numcycles);		
-		cudaEventRecord(end, cur_stream());
-		cudaEventSynchronize(end);
-		cudaStreamSynchronize(cur_stream());
+		for(unsigned int i = 0; i < num_kernels; ++i)
+		{
+			/* one block per sm, one warp per block */
+#ifdef VANILLA_LINUX
+			cudaEventRecord(start, cur_stream());
+#endif
+			docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
+#ifdef VANILLA_LINUX
+			cudaEventRecord(end, cur_stream());
+			cudaEventSynchronize(end);
+#endif
+			cudaStreamSynchronize(cur_stream());
 		
-//		chunkMemcpy(this_gpu(h_iteration_count), this_gpu(d_iteration_count), sizeof(unsigned int),
-//					cudaMemcpyDeviceToHost, cur_gpu(), useEngineLocks());
-//		
-		cudaEventElapsedTime(&ms, start, end);
-		ms_sum += ms;
+#ifdef VANILLA_LINUX
+			cudaEventElapsedTime(&ms, start, end);
+			ms_sum += ms;
+#endif
+		}
+#ifdef VANILLA_LINUX
 		++gpucount;
-//		printf("%f\n", ms);
-//		printf("%f: %u\n", ms, this_gpu(h_iteration_count)[0]);
-
+#endif
 		
 		if(RECV_SIZE > 0)
 			chunkMemcpy(h_recv_data, this_gpu(d_state_data), RECV_SIZE,
@@ -1166,7 +1176,7 @@ static void debug_delay_loop(void)
 	}
 }
 
-static int gpu_job(double exec_time, double gpu_exec_time, double program_end)
+static int gpu_job(double exec_time, double gpu_exec_time, unsigned int num_kernels, double program_end)
 {
 	double chunk1, chunk2;
 
@@ -1178,7 +1188,7 @@ static int gpu_job(double exec_time, double gpu_exec_time, double program_end)
 		chunk2 = exec_time - chunk1;
 		
 		loop_for(chunk1, program_end + 1);
-		gpu_loop_for(gpu_exec_time, program_end + 1);
+		gpu_loop_for(gpu_exec_time, num_kernels, program_end + 1);
 		loop_for(chunk2, program_end + 1);
 		
 		sleep_next_period();
@@ -1243,7 +1253,7 @@ static void init_linux()
 	mlockall(MCL_CURRENT | MCL_FUTURE);
 }
 
-static int gpu_job_linux(double exec_time, double gpu_exec_time, double program_end)
+static int gpu_job_linux(double exec_time, double gpu_exec_time, unsigned int num_kernels, double program_end)
 {
 	double chunk1, chunk2;
 	
@@ -1255,7 +1265,7 @@ static int gpu_job_linux(double exec_time, double gpu_exec_time, double program_
 		chunk2 = exec_time - chunk1;
 
 		loop_for(chunk1, program_end + 1);
-		gpu_loop_for_linux(gpu_exec_time, program_end + 1);
+		gpu_loop_for_linux(gpu_exec_time, num_kernels, program_end + 1);
 		loop_for(chunk2, program_end + 1);
 		
 		sleep_next_period_linux();
@@ -1284,8 +1294,8 @@ enum eScheduler
 	RT_LINUX
 };
 
-#define CPU_OPTIONS "p:z:c:wlveio:f:s:q:X:L:Q:"
-#define GPU_OPTIONS "g:y:r:C:E:dG:xS:R:T:Z:aFm:b:MNI"
+#define CPU_OPTIONS "p:z:c:wlveio:f:s:q:X:L:Q:d"
+#define GPU_OPTIONS "g:y:r:C:E:DG:xS:R:T:Z:aFm:b:MNIk:"
 
 // concat the option strings
 #define OPTSTR CPU_OPTIONS GPU_OPTIONS
@@ -1310,7 +1320,7 @@ int main(int argc, char** argv)
 	double duration = 0, start = 0;
 	double *exec_times = NULL;
 	double scale = 1.0;
-	task_class_t cls = RT_CLASS_HARD;
+	task_class_t cls = RT_CLASS_SOFT;
 	int cur_job = 0, num_jobs = 0;
 	struct rt_task param;
 
@@ -1318,7 +1328,9 @@ int main(int argc, char** argv)
 	lt_t budget;
 	
 	int num_gpu_users = 0;
-	
+	unsigned int num_kernels = 1;
+
+	budget_drain_policy_t drain = DRAIN_SIMPLE;
 	
 	eScheduler scheduler = LITMUS;
 	
@@ -1365,7 +1377,7 @@ int main(int argc, char** argv)
 			ENGINE_LOCK_TYPE = (eEngineLockTypes)atoi(optarg);
 			assert(ENGINE_LOCK_TYPE == FIFO || ENGINE_LOCK_TYPE == PRIOQ);
 			break;
-		case 'd':
+		case 'D':
 			USE_DYNAMIC_GROUP_LOCKS = true;
 			break;
 		case 'G':
@@ -1401,6 +1413,9 @@ int main(int argc, char** argv)
 			num_gpu_users = atoi(optarg);
 			assert(num_gpu_users > 0);
 			break;
+		case 'k':
+			num_kernels = (unsigned int)atoi(optarg);
+			break;
 		case 'b':
 			budget_ms = atoi(optarg);
 			break;
@@ -1423,6 +1438,9 @@ int main(int argc, char** argv)
 			break;
 		case 'i':
 			want_signals = 1;
+			break;
+		case 'd':
+			drain = DRAIN_SOBLIV;
 			break;
 		case 'l':
 			test_loop = 1;
@@ -1475,7 +1493,7 @@ int main(int argc, char** argv)
 		ENABLE_AFFINITY = false;
 		RELAX_FIFO_MAX_LEN = false;
 		ENABLE_RT_AUX_THREADS = false;		
-		budget_ms = -1;
+		budget_ms = -1.0;
 		want_enforcement = 0;
 		want_signals = 0;
 		
@@ -1551,7 +1569,7 @@ int main(int argc, char** argv)
 	if (GPU_USING && gpu_wcet_ms <= 0)
 		usage("The worst-case gpu execution time must be a positive number.");
 
-	if (budget_ms > 0)
+	if (budget_ms > 0.0)
 		budget = ms2ns(budget_ms);
 	else
 		budget = wcet;
@@ -1586,6 +1604,7 @@ int main(int argc, char** argv)
 			PRECISE_ENFORCEMENT : NO_ENFORCEMENT;
 	param.budget_signal_policy = (want_enforcement && want_signals) ?
 			PRECISE_SIGNALS : NO_SIGNALS;
+	param.drain_policy = drain;
 	param.release_policy = PERIODIC;
 				
 	if (migrate)
@@ -1665,6 +1684,7 @@ int main(int argc, char** argv)
 		else {
 			while (gpu_job(wcet_ms * 0.001 * scale,
 						   gpu_wcet_ms * 0.001 * scale,
+						   num_kernels,
 						   start + duration));
 		}
 	}
@@ -1676,6 +1696,7 @@ int main(int argc, char** argv)
 		else {
 			while (gpu_job_linux(wcet_ms * 0.001 * scale,
 						   gpu_wcet_ms * 0.001 * scale,
+						   num_kernels,
 						   start + duration));
 		}
 	}
@@ -1710,7 +1731,7 @@ int main(int argc, char** argv)
 		exit_cuda();
 
 
-		printf("avg: %f\n", ms_sum/gpucount);
+//		printf("avg: %f\n", ms_sum/gpucount);
 	}
 	
 	if (file)

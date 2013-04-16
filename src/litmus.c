@@ -113,6 +113,8 @@ void init_rt_task_param(struct rt_task* tp)
 	tp->cls = RT_CLASS_SOFT;
 	tp->priority = LITMUS_LOWEST_PRIORITY;
 	tp->budget_policy = NO_ENFORCEMENT;
+	tp->drain_policy = DRAIN_SIMPLE;
+	tp->budget_signal_policy = NO_SIGNALS;
 	tp->release_policy = SPORADIC;
 }
 
