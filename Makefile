@@ -14,6 +14,11 @@ ARCH ?= ${host-arch}
 # LITMUS_KERNEL -- where to find the litmus kernel?
 LITMUS_KERNEL ?= ../litmus-rt
 
+# NUMA Support. Comment out to disable. Requires libnuma dev files.
+#
+# Enabling this option will ensure all memory resides on NUMA nodes
+# that overlap clusters/partitions specified by a call to be_migrate*().
+NUMA_SUPPORT = dummyval
 
 # ##############################################################################
 # Internal configuration.
@@ -62,8 +67,17 @@ CUFLAGS  = ${flags-api} ${flags-cu-debug} ${flags-cu-optim} ${flags-cu-nvcc} ${f
 CFLAGS   = ${flags-debug} ${flags-misc}
 LDFLAGS  = ${flags-${ARCH}}
 
+ifdef NUMA_SUPPORT
+CFLAGS += -DLITMUS_NUMA_SUPPORT
+CPPFLAGS += -DLITMUS_NUMA_SUPPORT
+CUFLAGS += -DLITMUS_NUMA_SUPPORT
+endif
+
 # how to link against liblitmus
 liblitmus-flags = -L${LIBLITMUS} -llitmus
+ifdef NUMA_SUPPORT
+liblitmus-flags += -lnuma
+endif
 
 # how to link cuda
 cuda-flags-i386 = -L/usr/local/cuda/lib

@@ -4,7 +4,12 @@
 #include <sched.h> /* for cpu sets */
 #include <unistd.h>
 
+#ifdef LITMUS_NUMA_SUPPORT
+#include <numa.h>
+#endif
+
 #include "migration.h"
+
 
 extern ssize_t read_file(const char* fname, void* buf, size_t maxlen);
 
@@ -54,6 +59,50 @@ int cluster_to_first_cpu(int cluster, int cluster_sz)
 	return first_cpu;
 }
 
+#ifdef LITMUS_NUMA_SUPPORT
+/* Restrict the task to the numa nodes in the cpu mask. */
+/* Call this before setting up CPU affinity masks since that mask may be
+ * a subset of the numa nodes. */
+static int setup_numa(pid_t tid, int sz, const cpu_set_t *cpus)
+{
+	int nr_nodes;
+	struct bitmask* new_nodes;
+	struct bitmask* old_nodes;
+	int i;
+	int ret = 0;
+
+	if (numa_available() != 0)
+		goto out;
+
+	nr_nodes = numa_max_node()+1;
+	new_nodes = numa_bitmask_alloc(nr_nodes);
+	old_nodes = numa_bitmask_alloc(nr_nodes);
+	/* map the cpu mask to a numa mask */
+	for (i = 0; i < sz; ++i) {
+		if(CPU_ISSET_S(i, sz, cpus)) {
+			numa_bitmask_setbit(new_nodes, numa_node_of_cpu(i));
+		}
+	}
+	/* compute the complement numa mask */
+	for (i = 0; i < nr_nodes; ++i) {
+		if (!numa_bitmask_isbitset(new_nodes, i)) {
+			numa_bitmask_setbit(old_nodes, i);
+		}
+	}
+
+	numa_set_strict(1);
+	numa_bind(new_nodes); /* sets CPU and memory policy */
+	ret = numa_migrate_pages(tid, old_nodes, new_nodes); /* move over prio alloc'ed pages */
+	numa_bitmask_free(new_nodes);
+	numa_bitmask_free(old_nodes);
+
+out:
+	return ret;
+}
+#else
+#define setup_numa(x, y, z) 0
+#endif
+
 int be_migrate_thread_to_cpu(pid_t tid, int target_cpu)
 {
 	cpu_set_t *cpu_set;
@@ -82,7 +131,9 @@ int be_migrate_thread_to_cpu(pid_t tid, int target_cpu)
 	if (tid == 0)
 		tid = gettid();
 
-	ret = sched_setaffinity(tid, sz, cpu_set);
+	ret = (setup_numa(tid, sz, cpu_set) >= 0) ? 0 : -1;
+	if (!ret)
+		ret = sched_setaffinity(tid, sz, cpu_set);
 
 	CPU_FREE(cpu_set);
 
@@ -114,7 +165,7 @@ int __be_migrate_thread_to_cluster(pid_t tid, int cluster, int cluster_sz,
 	}
 
 	master = (ignore_rm) ? -1 : release_master();
-	num_cpus = num_online_cpus();
+		num_cpus = num_online_cpus();
 
 	if (num_cpus == -1 || last_cpu >= num_cpus || first_cpu < 0)
 		return -1;
@@ -133,7 +184,9 @@ int __be_migrate_thread_to_cluster(pid_t tid, int cluster, int cluster_sz,
 	if (tid == 0)
 		tid = gettid();
 
-	ret = sched_setaffinity(tid, sz, cpu_set);
+	ret = (setup_numa(tid, sz, cpu_set) >= 0) ? 0 : -1;
+	if (!ret)
+		ret = sched_setaffinity(tid, sz, cpu_set);
 
 	CPU_FREE(cpu_set);
 

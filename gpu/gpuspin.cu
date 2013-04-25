@@ -57,7 +57,7 @@ size_t CHUNK_SIZE = 0;
 
 int TOKEN_LOCK = -1;
 
-bool USE_ENGINE_LOCKS = true;
+bool USE_ENGINE_LOCKS = false;
 bool USE_DYNAMIC_GROUP_LOCKS = false;
 int EE_LOCKS[NR_GPUS];
 int CE_SEND_LOCKS[NR_GPUS];
@@ -692,12 +692,13 @@ static void init_cuda(int num_gpu_users)
 			{
 				if (i != j)
 				{
+					int other = GPU_PARTITION*GPU_PARTITION_SIZE + j;
 					int canAccess = 0;
-					cudaDeviceCanAccessPeer(&canAccess, i, j);
+					cudaDeviceCanAccessPeer(&canAccess, which, other);
 					if(canAccess)
 					{
-						cudaDeviceEnablePeerAccess(j, 0);
-						p2pMigration[i][j] = true;
+						cudaDeviceEnablePeerAccess(other, 0);
+						p2pMigration[which][other] = true;
 					}
 				}
 			}
@@ -1294,8 +1295,8 @@ enum eScheduler
 	RT_LINUX
 };
 
-#define CPU_OPTIONS "p:z:c:wlveio:f:s:q:X:L:Q:d"
-#define GPU_OPTIONS "g:y:r:C:E:DG:xS:R:T:Z:aFm:b:MNIk:"
+#define CPU_OPTIONS "p:z:c:wlveio:f:s:q:X:L:Q:d:"
+#define GPU_OPTIONS "g:y:r:C:E:DG:xS:R:T:Z:aFm:b:MNIk:V"
 
 // concat the option strings
 #define OPTSTR CPU_OPTIONS GPU_OPTIONS
@@ -1372,6 +1373,9 @@ int main(int argc, char** argv)
 			NUM_COPY_ENGINES = atoi(optarg);
 			assert(NUM_COPY_ENGINES == 1 || NUM_COPY_ENGINES == 2);
 			break;
+		case 'V':
+			RESERVED_MIGR_COPY_ENGINE = true;
+			break;
 		case 'E':
 			USE_ENGINE_LOCKS = true;
 			ENGINE_LOCK_TYPE = (eEngineLockTypes)atoi(optarg);
@@ -1440,7 +1444,9 @@ int main(int argc, char** argv)
 			want_signals = 1;
 			break;
 		case 'd':
-			drain = DRAIN_SOBLIV;
+			drain = (budget_drain_policy_t)atoi(optarg);
+			assert(drain >= DRAIN_SIMPLE && drain <= DRAIN_SOBLIV);
+			assert(drain != DRAIN_SAWARE); // unsupported
 			break;
 		case 'l':
 			test_loop = 1;
@@ -1623,18 +1629,6 @@ int main(int argc, char** argv)
 		activate_litmus_signals(SIG_BUDGET_MASK, longjmp_on_litmus_signal);
 	}
 
-	if (scheduler == LITMUS)
-	{
-		ret = task_mode(LITMUS_RT_TASK);
-		if (ret != 0)
-			bail_out("could not become RT task");
-	}
-	else
-	{
-		trace_name();
-		trace_param();
-	}
-
 //	if (protocol >= 0) {
 //		/* open reference to semaphore */
 //		lock_od = litmus_open_lock(protocol, resource_id, lock_namespace, &cluster);
@@ -1654,12 +1648,20 @@ int main(int argc, char** argv)
 		
 		init_cuda(num_gpu_users);
 		safetynet = true;
-		
-		if (ENABLE_RT_AUX_THREADS)
-			if (enable_aux_rt_tasks(AUX_CURRENT | AUX_FUTURE) != 0)
-				bail_out("enable_aux_rt_tasks() failed");
 	}
 	
+	if (scheduler == LITMUS)
+	{
+		ret = task_mode(LITMUS_RT_TASK);
+		if (ret != 0)
+			bail_out("could not become RT task");
+	}
+	else
+	{
+		trace_name();
+		trace_param();
+	}
+
 	if (wait) {
 		ret = wait_for_ts_release2(&releaseTime);
 		if (ret != 0)
@@ -1672,6 +1674,11 @@ int main(int argc, char** argv)
 	{
 		clock_gettime(CLOCK_MONOTONIC, &releaseTime);
 		sleep_next_period_linux();
+	}
+
+	if (scheduler == LITMUS && GPU_USING && ENABLE_RT_AUX_THREADS) {
+		if (enable_aux_rt_tasks(AUX_CURRENT | AUX_FUTURE) != 0)
+			bail_out("enable_aux_rt_tasks() failed");
 	}
 
 	start = wctime();
