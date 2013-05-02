@@ -134,7 +134,7 @@ int job(lt_t exec_ns, lt_t budget_ns)
 						for(int i = 0; i < NUM_LOCKS; ++i)
 							litmus_lock(LOCKS[i]);
 				}
-				
+
 				// intentionally overrun via suspension
 				if (OVERRUN_BY_SLEEP)
 					lt_sleep(approx_remaining + overrun_extra);
@@ -146,11 +146,11 @@ int job(lt_t exec_ns, lt_t budget_ns)
 						litmus_dgl_unlock(LOCKS, NUM_LOCKS);
 					else
 						for(int i = NUM_LOCKS-1; i >= 0; --i)
-							litmus_unlock(LOCKS[i]);						
+							litmus_unlock(LOCKS[i]);
 					if (NEST_IN_IKGLP)
 						litmus_unlock(IKGLP_LOCK);
 				}
-				
+
 				if (SIGNALS && BLOCK_SIGNALS_ON_SLEEP)
 					unblock_litmus_signals(SIG_BUDGET);
 			}
@@ -165,7 +165,7 @@ int job(lt_t exec_ns, lt_t budget_ns)
 	return 1;
 }
 
-#define OPTSTR "SbosOvzalwqixdn:r:"
+#define OPTSTR "SbosOvzalwqixdn:r:p:"
 
 int main(int argc, char** argv)
 {
@@ -185,9 +185,16 @@ int main(int argc, char** argv)
 	int compute_overrun_rate = 0;
 	int once = 1;
 
+	bool migrate = false;
+	int partition = 0;
+	int partition_sz = 1;
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
 		switch(opt) {
+		case 'p':
+			migrate = true;
+			partition = atoi(optarg);
+			break;
 		case 'S':
 			SIGNALS = 1;
 			break;
@@ -261,7 +268,7 @@ int main(int argc, char** argv)
 	assert(NUM_LOCKS > 0);
 	if (LOCK_TYPE == IKGLP || NEST_IN_IKGLP)
 		assert(NUM_REPLICAS >= 1);
-	
+
 	LOCKS = new int[NUM_LOCKS];
 
 	if (compute_overrun_rate) {
@@ -281,7 +288,14 @@ int main(int argc, char** argv)
 		param.budget_policy = PRECISE_ENFORCEMENT;
 	else
 		param.budget_signal_policy = PRECISE_SIGNALS;
+	if (migrate)
+		param.cpu = cluster_to_first_cpu(partition, partition_sz);
 
+	// set up affinity and init litmus
+	if (migrate) {
+		ret = be_migrate_to_cluster(partition, partition_sz);
+		assert(!ret);
+	}
 	init_litmus();
 
 	ret = set_rt_task_param(gettid(), &param);
@@ -309,7 +323,7 @@ int main(int argc, char** argv)
 			}
 			LOCKS[i] = lock;
 		}
-		
+
 		if (NEST_IN_IKGLP) {
 			IKGLP_LOCK = open_ikglp_sem(NAMESPACE, i, NUM_REPLICAS);
 			if (IKGLP_LOCK < 0) {
@@ -318,13 +332,13 @@ int main(int argc, char** argv)
 			}
 		}
 	}
-	
+
 	if (WAIT) {
 		ret = wait_for_ts_release();
 		if (ret < 0)
 			perror("wait_for_ts_release");
 	}
-	
+
 	ret = task_mode(LITMUS_RT_TASK);
 	assert(ret == 0);
 
@@ -360,6 +374,6 @@ int main(int argc, char** argv)
 	printf("# Overruns: %d\n", NUM_OVERRUNS);
 
 	delete[] LOCKS;
-	
+
 	return 0;
 }

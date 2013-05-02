@@ -30,7 +30,7 @@ flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
 flags-cu-debug = -g -G -Xcompiler -Wall -Xcompiler -Werror
-flags-cu-optim = -O3 -Xcompiler -march=native
+flags-cu-optim = -O2 -Xcompiler -march=native
 flags-cu-nvcc = --use_fast_math -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30
 flags-cu-misc  = -Xcompiler -fasynchronous-unwind-tables -Xcompiler -fnon-call-exceptions -Xcompiler -malign-double -Xcompiler -pthread
 flags-cu-x86_64 = -m64
@@ -299,7 +299,7 @@ lib-budget = -lrt -lm -pthread
 vpath %.cu gpu/
 
 objcu-gpuspin = gpuspin.o common.o
-lib-gpuspin = -lrt -lm -lpthread
+lib-gpuspin = -lblitz -lrt -lm -lpthread
 
 # ##############################################################################
 # Build everything that depends on liblitmus.

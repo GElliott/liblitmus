@@ -66,6 +66,7 @@ int cluster_to_first_cpu(int cluster, int cluster_sz)
 static int setup_numa(pid_t tid, int sz, const cpu_set_t *cpus)
 {
 	int nr_nodes;
+	int nr_cpus = num_online_cpus();
 	struct bitmask* new_nodes;
 	struct bitmask* old_nodes;
 	int i;
@@ -78,7 +79,7 @@ static int setup_numa(pid_t tid, int sz, const cpu_set_t *cpus)
 	new_nodes = numa_bitmask_alloc(nr_nodes);
 	old_nodes = numa_bitmask_alloc(nr_nodes);
 	/* map the cpu mask to a numa mask */
-	for (i = 0; i < sz; ++i) {
+	for (i = 0; i < nr_cpus; ++i) {
 		if(CPU_ISSET_S(i, sz, cpus)) {
 			numa_bitmask_setbit(new_nodes, numa_node_of_cpu(i));
 		}
@@ -124,6 +125,7 @@ int be_migrate_thread_to_cpu(pid_t tid, int target_cpu)
 
 	cpu_set = CPU_ALLOC(num_cpus);
 	sz = CPU_ALLOC_SIZE(num_cpus);
+
 	CPU_ZERO_S(sz, cpu_set);
 	CPU_SET_S(target_cpu, sz, cpu_set);
 
