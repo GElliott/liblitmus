@@ -80,7 +80,7 @@ int get_nr_ts_release_waiters(void)
 }
 
 /* thread-local pointer to control page */
-static __thread struct control_page *ctrl_page;
+static __thread struct control_page *ctrl_page = NULL;
 
 int init_kernel_iface(void)
 {

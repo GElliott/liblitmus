@@ -58,6 +58,11 @@ int litmus_unlock(int od)
 	return syscall(__NR_litmus_unlock, od);
 }
 
+int litmus_should_yield_lock(int od)
+{
+	return syscall(__NR_litmus_should_yield_lock, od);
+}
+
 int litmus_dgl_lock(int *ods, int dgl_size)
 {
 	return syscall(__NR_litmus_dgl_lock, ods, dgl_size);
@@ -66,6 +71,11 @@ int litmus_dgl_lock(int *ods, int dgl_size)
 int litmus_dgl_unlock(int *ods, int dgl_size)
 {
 	return syscall(__NR_litmus_dgl_unlock, ods, dgl_size);
+}
+
+int litmus_dgl_should_yield_lock(int *ods, int dgl_size)
+{
+	return syscall(__NR_litmus_dgl_should_yield_lock, ods, dgl_size);
 }
 
 int get_job_no(unsigned int *job_no)

@@ -89,6 +89,7 @@ int litmus_open_lock(
 /* real-time locking protocol support */
 int litmus_lock(int od);
 int litmus_unlock(int od);
+int litmus_should_yield_lock(int od);
 
 /* Dynamic group lock support.  ods arrays MUST BE PARTIALLY ORDERED!!!!!!
  * Use the same ordering for lock and unlock.
@@ -99,6 +100,7 @@ int litmus_unlock(int od);
  */
 int litmus_dgl_lock(int* ods, int dgl_size);
 int litmus_dgl_unlock(int* ods, int dgl_size);
+int litmus_dgl_should_yield_lock(int* ods, int dgl_size);
 
 /* nvidia graphics cards */
 int register_nv_device(int nv_device_id);

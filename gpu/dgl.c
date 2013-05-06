@@ -229,6 +229,7 @@ void* rt_thread(void* _ctx)
 
 		do_exit = job(ctx);
 
+		fprintf(stdout, "[%d] should yield dgl: %d.\n", ctx->id, litmus_dgl_should_yield_lock(dgl, dgl_size));
 
 		xfprintf(stdout, "[%d] unlocking dgl.\n", ctx->id);
 		litmus_dgl_unlock(dgl, dgl_size);

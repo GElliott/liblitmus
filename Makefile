@@ -25,12 +25,15 @@ NUMA_SUPPORT = dummyval
 
 # compiler flags
 flags-debug    = -O2 -Wall -Werror -g -Wdeclaration-after-statement
+#flags-debug    = -Wall -Werror -g -Wdeclaration-after-statement
 flags-debug-cpp    = -O2 -Wall -Werror -g
+#flags-debug-cpp    = -Wall -Werror -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
 flags-cu-debug = -g -G -Xcompiler -Wall -Xcompiler -Werror
 flags-cu-optim = -O2 -Xcompiler -march=native
+#flags-cu-optim = -Xcompiler -march=native
 flags-cu-nvcc = --use_fast_math -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30
 flags-cu-misc  = -Xcompiler -fasynchronous-unwind-tables -Xcompiler -fnon-call-exceptions -Xcompiler -malign-double -Xcompiler -pthread
 flags-cu-x86_64 = -m64
@@ -63,7 +66,6 @@ headers = -I${LIBLITMUS}/include -I${LIBLITMUS}/arch/${include-${ARCH}}/include
 # combine options
 CPPFLAGS = ${flags-api} ${flags-debug-cpp} ${flags-misc} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
 CUFLAGS  = ${flags-api} ${flags-cu-debug} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
-#CUFLAGS  = ${flags-api} ${flags-cu-optim} ${flags-cu-nvcc} ${flags-cu-misc} -DARCH=${ARCH} ${headers}
 CFLAGS   = ${flags-debug} ${flags-misc}
 LDFLAGS  = ${flags-${ARCH}}
 
@@ -82,7 +84,7 @@ endif
 # how to link cuda
 cuda-flags-i386 = -L/usr/local/cuda/lib
 cuda-flags-x86_64 = -L/usr/local/cuda/lib64
-cuda-flags = ${cuda-flags-${ARCH}} -lcudart
+cuda-flags = ${cuda-flags-${ARCH}} -lcudart -lcuda
 
 # Force gcc instead of cc, but let the user specify a more specific version if
 # desired.
@@ -299,7 +301,7 @@ lib-budget = -lrt -lm -pthread
 vpath %.cu gpu/
 
 objcu-gpuspin = gpuspin.o common.o
-lib-gpuspin = -lblitz -lrt -lm -lpthread
+lib-gpuspin = -lblitz -lrt -lm -lpthread -lboost_filesystem -lboost_system
 
 # ##############################################################################
 # Build everything that depends on liblitmus.
