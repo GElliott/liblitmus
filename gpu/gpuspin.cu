@@ -8,6 +8,8 @@
 #include <assert.h>
 #include <execinfo.h>
 
+#include <exception>
+
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/filesystem.hpp>
@@ -39,6 +41,7 @@ const unsigned int CE_RECV_START = 400;
 const unsigned int CE_RECV_END = 401;
 
 bool SILENT = true;
+//bool SILENT = false;
 inline int xprintf(const char *format, ...)
 {
 	int ret = 0;
@@ -55,6 +58,19 @@ const char *lock_namespace = "./.gpuspin-locks";
 const size_t PAGE_SIZE = sysconf(_SC_PAGESIZE);
 
 const int NR_GPUS = 8;
+
+bool WANT_SIGNALS = false;
+inline void gpuspin_block_litmus_signals(unsigned long mask)
+{
+	if (WANT_SIGNALS)
+		block_litmus_signals(mask);
+}
+
+inline void gpuspin_unblock_litmus_signals(unsigned long mask)
+{
+	if (WANT_SIGNALS)
+		unblock_litmus_signals(mask);
+}
 
 bool GPU_USING = false;
 bool ENABLE_AFFINITY = false;
@@ -305,16 +321,24 @@ struct ce_lock_state
 	void lock() {
 		if(locks[0] == locks[1]) crash();
 
-		if (num_locks == 1)
+		if (num_locks == 1) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			litmus_lock(locks[0]);
-		else if(USE_DYNAMIC_GROUP_LOCKS)
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		}
+		else if(USE_DYNAMIC_GROUP_LOCKS) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			litmus_dgl_lock(locks, num_locks);
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		}
 		else
 		{
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			for(int l = 0; l < num_locks; ++l)
 			{
 				litmus_lock(locks[l]);
 			}
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		}
 		locked = true;
 	}
@@ -322,17 +346,25 @@ struct ce_lock_state
 	void unlock() {
 		if(locks[0] == locks[1]) crash();
 
-		if (num_locks == 1)
+		if (num_locks == 1) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			litmus_unlock(locks[0]);
-		else if(USE_DYNAMIC_GROUP_LOCKS)
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		}
+		else if(USE_DYNAMIC_GROUP_LOCKS) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			litmus_dgl_unlock(locks, num_locks);
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		}
 		else
 		{
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			// reverse order
 			for(int l = num_locks - 1; l >= 0; --l)
 			{
 				litmus_unlock(locks[l]);
 			}
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		}
 		locked = false;
 	}
@@ -391,14 +423,14 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 			if (!state->budgetIsAvailable(bytesToCopy)) {
 				// optimization - don't unlock if no one else needs the engine
 				if (state->should_yield()) {
-					//cudaStreamSynchronize(STREAMS[CUR_DEVICE]);
+					gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS); 
 					cudaEventSynchronize(EVENTS[CUR_DEVICE]);
 					ret = cudaGetLastError();
-
 					if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
 						inject_action(CE_RECV_END);
 					if (kind == cudaMemcpyHostToDevice)
 						inject_action(CE_SEND_END);
+					gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 					state->unlock();
 					if(ret != cudaSuccess)
@@ -422,8 +454,10 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 		}
 
         //ret = cudaMemcpy(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind);
+		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		cudaMemcpyAsync(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind, STREAMS[CUR_DEVICE]);
 		cudaEventRecord(EVENTS[CUR_DEVICE], STREAMS[CUR_DEVICE]);
+		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 		if(state)
 			state->decreaseBudget(bytesToCopy);
@@ -444,10 +478,11 @@ static cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 	cudaError_t ret;
 	if(!do_locking || device_a == -1) {
 		ret = __chunkMemcpy(a_dst, a_src, count, kind, NULL);
+		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		cudaEventSynchronize(cur_event());
-//		cudaStreamSynchronize(cur_stream());
 		if(ret == cudaSuccess)
 			ret = cudaGetLastError();
+		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 	}
 	else {
 		ce_lock_state state(device_a, kind, count, device_b, migration);
@@ -459,6 +494,7 @@ static cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 			inject_action(CE_SEND_START);
 
 		ret = __chunkMemcpy(a_dst, a_src, count, kind, &state);
+		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		cudaEventSynchronize(cur_event());
 		//		cudaStreamSynchronize(cur_stream());
 		if(ret == cudaSuccess)
@@ -468,6 +504,7 @@ static cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 			inject_action(CE_RECV_END);
 		if (kind == cudaMemcpyHostToDevice)
 			inject_action(CE_SEND_END);
+		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 		state.unlock();
 	}
@@ -963,11 +1000,11 @@ static void init_cuda(const int num_gpu_users)
 		}
 		catch(std::exception &e)
 		{
-			printf("caught an exception during initializiation!: %s\n", e.what());
+			fprintf(stderr, "caught an exception during initializiation!: %s\n", e.what());
 		}
 		catch(...)
 		{
-			printf("caught unknown exception.\n");
+			fprintf(stderr, "caught unknown exception.\n");
 		}
 
 		gpu_mgmt_mutexes[which].unlock();
@@ -1185,62 +1222,108 @@ __global__ void docudaspin(float* data, /*unsigned int* iterations,*/ unsigned i
 static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double emergency_exit)
 {
 	int next_gpu;
+	bool ee_locked = false;
+	bool early_exit = false;
 
 	if (gpu_sec_time <= 0.0)
 		goto out;
 	if (emergency_exit && wctime() > emergency_exit)
 		goto out;
 
+	gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 	next_gpu = litmus_lock(TOKEN_LOCK);
 	inject_action(TOKEN_START);
+	gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+
+	LITMUS_TRY
 	{
+		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		MigrateIfNeeded(next_gpu);
+		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+
 		unsigned int numcycles = ((unsigned int)(cur_hz() * gpu_sec_time))/num_kernels;
 
 		if(SEND_SIZE > 0)
 			chunkMemcpy(this_gpu(d_state_data), h_send_data, SEND_SIZE,
 						cudaMemcpyHostToDevice, CUR_DEVICE, useEngineLocks());
 
-		bool locked = false;
 		for(unsigned int i = 0; i < num_kernels; ++i)
 		{
-			if(useEngineLocks() && !locked) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
+
+			if(useEngineLocks() && !ee_locked) {
 				litmus_lock(cur_ee());
 				inject_action(EE_START);
-				locked = true;
+				ee_locked = true;
 			}
-
 			/* one block per sm, one warp per block */
 			docudaspin <<<cur_sms(), cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
-
 			if(useEngineLocks() && (!YIELD_LOCKS || (YIELD_LOCKS && litmus_should_yield_lock(cur_ee())))) {
 //				cudaStreamSynchronize(cur_stream());
 				cudaEventRecord(cur_event(), cur_stream());
 				cudaEventSynchronize(cur_event());
 				inject_action(EE_END);
 				litmus_unlock(cur_ee());
-				locked = false;
+				ee_locked = false;
 			}
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		}
-		if (locked) {
+
+		if (ee_locked) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
+
 			cudaEventRecord(cur_event(), cur_stream());
 			cudaEventSynchronize(cur_event());
 			inject_action(EE_END);
 			litmus_unlock(cur_ee());
-			locked = false;
+
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+			ee_locked = false;
 		}
 
 		if(RECV_SIZE > 0)
 			chunkMemcpy(h_recv_data, this_gpu(d_state_data), RECV_SIZE,
 						cudaMemcpyDeviceToHost, CUR_DEVICE, useEngineLocks());
 
-		if (MIGRATE_VIA_SYSMEM)
+		if (MIGRATE_VIA_SYSMEM) {
+			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			PullState();
+			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		}
 	}
+	LITMUS_CATCH(SIG_BUDGET)
+	{
+			cudaEventRecord(cur_event(), cur_stream());
+			cudaEventSynchronize(cur_event());
+
+			if (useEngineLocks()) {
+				/* unlock all engine locks. will fail safely if not held */
+				litmus_unlock(cur_ee());
+				if (NUM_COPY_ENGINES == 1) {
+					litmus_unlock(cur_send());
+				}
+				else if (RESERVED_MIGR_COPY_ENGINE) {
+					litmus_unlock(cur_send());
+					litmus_unlock(cur_migr_send());
+				}
+				else {
+					litmus_unlock(cur_send());
+					litmus_unlock(cur_recv());
+				}
+			}
+			early_exit = true;
+	}
+	END_LITMUS_TRY
+
+	gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 	inject_action(TOKEN_END);
 	litmus_unlock(TOKEN_LOCK);
+	gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 	last_gpu() = cur_gpu();
+
+	if (early_exit)
+		throw std::exception();
 
 out:
 	return;
@@ -1463,9 +1546,24 @@ static bool gpu_job(double exec_time, double gpu_exec_time, unsigned int num_ker
 		chunk1 = exec_time * drand48();
 		chunk2 = exec_time - chunk1;
 
-		loop_for(chunk1, program_end + 1);
-		gpu_loop_for(gpu_exec_time, num_kernels, program_end + 1);
-		loop_for(chunk2, program_end + 1);
+		LITMUS_TRY
+		{
+			try
+			{
+				loop_for(chunk1, program_end + 1);
+				gpu_loop_for(gpu_exec_time, num_kernels, program_end + 1);
+				loop_for(chunk2, program_end + 1);
+			}
+			catch(std::exception& e)
+			{
+				xprintf("%d: ran out of time while using GPU\n", gettid());
+			}
+		}
+		LITMUS_CATCH(SIG_BUDGET)
+		{
+			xprintf("%d: ran out of time\n", gettid());
+		}
+		END_LITMUS_TRY
 
 		sleep_next_period();
 	}
@@ -1478,7 +1576,15 @@ static bool job(double exec_time, double program_end)
 		return false;
 	}
 	else {
-		loop_for(exec_time, program_end + 1);
+		LITMUS_TRY
+		{
+			loop_for(exec_time, program_end + 1);
+		}
+		LITMUS_CATCH(SIG_BUDGET)
+		{
+			xprintf("%d: ran out of time\n", gettid());
+		}
+		END_LITMUS_TRY
 		sleep_next_period();
 	}
 	return true;
@@ -1741,6 +1847,8 @@ void apply_args(struct Args* args)
 	else if (args->scheduler == LITMUS)
 		TRACE_MIGRATIONS = false;
 
+	WANT_SIGNALS = args->want_signals;
+
 	// roll back other globals to an initial state
 	CUR_DEVICE = -1;
 	LAST_DEVICE = -1;
@@ -1773,7 +1881,6 @@ int __do_normal(struct Args* args)
 		USE_DYNAMIC_GROUP_LOCKS = false;
 		RELAX_FIFO_MAX_LEN = false;
 		ENABLE_RT_AUX_THREADS = false;
-		args->budget_ms = -1.0;
 		args->want_enforcement = false;
 		args->want_signals = false;
 
@@ -1788,23 +1895,24 @@ int __do_normal(struct Args* args)
 
 	wcet   = ms2ns(args->wcet_ms);
 	period = ms2ns(args->period_ms);
+
 	if (wcet <= 0) {
-		printf("The worst-case execution time must be a positive number.\n");
+		fprintf(stderr, "The worst-case execution time must be a positive number.\n");
 		ret = -1;
 		goto out;
 	}
 	if (period <= 0) {
-		printf("The period must be a positive number.\n");
+		fprintf(stderr, "The period must be a positive number.\n");
 		ret = -1;
 		goto out;
 	}
 	if (wcet > period) {
-		printf("The worst-case execution time must not exceed the period.\n");
+		fprintf(stderr, "The worst-case execution time must not exceed the period.\n");
 		ret = -1;
 		goto out;
 	}
 	if (args->gpu_using && args->gpu_wcet_ms <= 0) {
-		printf("The worst-case gpu execution time must be a positive number.\n");
+		fprintf(stderr, "The worst-case gpu execution time must be a positive number.\n");
 		ret = -1;
 		goto out;
 	}
@@ -1812,7 +1920,7 @@ int __do_normal(struct Args* args)
 	if (args->budget_ms > 0.0)
 		budget = ms2ns(args->budget_ms);
 	else
-		budget = args->wcet_ms;
+		budget = wcet;
 
 	// randomize execution time according to a normal distribution
 	// centered around the desired execution time.
@@ -1822,7 +1930,7 @@ int __do_normal(struct Args* args)
 
 	ret = be_migrate_all_to_cluster(args->cluster, args->cluster_size);
 	if (ret < 0) {
-		printf("could not migrate to target partition or cluster.\n");
+		fprintf(stderr, "could not migrate to target partition or cluster.\n");
 		goto out;
 	}
 
@@ -1844,8 +1952,9 @@ int __do_normal(struct Args* args)
 	param.cls = args->cls;
 	param.budget_policy = (args->want_enforcement) ?
 		PRECISE_ENFORCEMENT : NO_ENFORCEMENT;
-	param.budget_signal_policy = (args->want_enforcement && args->want_signals) ?
+	param.budget_signal_policy = (args->want_signals) ?
 		PRECISE_SIGNALS : NO_SIGNALS;
+	param.drain_policy = args->drain_policy;
 	param.drain_policy = args->drain_policy;
 	param.release_policy = PERIODIC;
 	param.cpu = cluster_to_first_cpu(args->cluster, args->cluster_size);
@@ -1869,7 +1978,7 @@ int __do_normal(struct Args* args)
 	{
 		ret = task_mode(LITMUS_RT_TASK);
 		if (ret < 0) {
-			printf("could not become RT task\n");
+			fprintf(stderr, "could not become RT task\n");
 			goto out;
 		}
 	}
@@ -1882,7 +1991,7 @@ int __do_normal(struct Args* args)
 			fifoparams.sched_priority = args->priority;
 			ret = sched_setscheduler(getpid(), SCHED_FIFO, &fifoparams);
 			if (ret < 0) {
-				printf("could not become sched_fifo task\n");
+				fprintf(stderr, "could not become sched_fifo task\n");
 				goto out;
 			}
 		}
@@ -1911,14 +2020,14 @@ int __do_normal(struct Args* args)
 		if (args->scheduler == LITMUS) {
 			ret = enable_aux_rt_tasks(AUX_CURRENT | AUX_FUTURE);
 			if (ret != 0) {
-				printf("enable_aux_rt_tasks() failed\n");
+				fprintf(stderr, "enable_aux_rt_tasks() failed\n");
 				goto out;
 			}
 		}
 		else if (args->scheduler == RT_LINUX) {
 			ret = enable_aux_rt_tasks_linux(gettid());
 			if (ret != 0) {
-				printf("enable_aux_rt_tasks_linux() failed\n");
+				fprintf(stderr, "enable_aux_rt_tasks_linux() failed\n");
 				goto out;
 			}
 		}
@@ -1954,18 +2063,22 @@ int __do_normal(struct Args* args)
 		}while(keepgoing);
 	}
 
+	if (args->want_signals)
+		ignore_litmus_signals(SIG_BUDGET_MASK);
+	
+
 	if (args->gpu_using && ENABLE_RT_AUX_THREADS) {
 		if (args->scheduler == LITMUS) {
 			ret = disable_aux_rt_tasks(AUX_CURRENT | AUX_FUTURE);
 			if (ret != 0) {
-				printf("disable_aux_rt_tasks() failed\n");
+				fprintf(stderr, "disable_aux_rt_tasks() failed\n");
 				goto out;
 			}
 		}
 		else if(args->scheduler == RT_LINUX) {
 			ret = disable_aux_rt_tasks_linux(gettid());
 			if (ret != 0) {
-				printf("disable_aux_rt_tasks_linux() failed\n");
+				fprintf(stderr, "disable_aux_rt_tasks_linux() failed\n");
 				goto out;
 			}
 		}
@@ -1978,7 +2091,7 @@ int __do_normal(struct Args* args)
 	{
 		ret = task_mode(BACKGROUND_TASK);
 		if (ret != 0) {
-			printf("could not become regular task (huh?)\n");
+			fprintf(stderr, "could not become regular task (huh?)\n");
 			goto out;
 		}
 	}
@@ -1989,7 +2102,7 @@ int __do_normal(struct Args* args)
 		memset(&normalparams, 0, sizeof(normalparams));
 		ret = sched_setscheduler(getpid(), SCHED_OTHER, &normalparams);
 		if (ret < 0) {
-			printf("could not become sched_normal task\n");
+			fprintf(stderr, "could not become sched_normal task\n");
 			goto out;
 		}
 	}
@@ -2531,6 +2644,9 @@ int main(int argc, char** argv)
 		// safety w.r.t. shared mem.
 		sleep(2);
 	}
+
+	/* make sure children don't take sigmasks */
+	ignore_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 	if (run_mode == NORMAL) {
 		return do_normal(&myArgs);

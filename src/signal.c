@@ -99,9 +99,11 @@ void longjmp_on_litmus_signal(int signum)
 	lit_env = pop_sigjmp();
 	if (lit_env) {
 		/* What you say?! */
+		//printf("%d: we get signal = %d!\n", gettid(), signum);
 		siglongjmp(lit_env->env, signum); /* restores signal mask */
 	}
 	else {
 		/* silently ignore the signal */
+		//printf("%d: silently ignoring signal.\n", gettid());
 	}
 }
