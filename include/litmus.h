@@ -270,19 +270,16 @@ int inject_completion(unsigned int job_no);
 int inject_gpu_migration(unsigned int to, unsigned int from);
 int __inject_action(unsigned int action);
 
-/*
+#if 1
 #define inject_action(COUNT) \
 do { \
-unsigned int temp = (COUNT); \
-printf("%s:%d:%d\n",__FUNCTION__,__LINE__,temp); \
-__inject_action(temp); \
+__inject_action(COUNT); \
 }while(0);
-*/
-
+#else
 #define inject_action(COUNT) \
 do { \
 }while(0);
-
+#endif
 
 /* Litmus signal handling */
 

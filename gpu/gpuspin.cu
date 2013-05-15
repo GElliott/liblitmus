@@ -26,6 +26,18 @@ using namespace ranlib;
 
 #define ms2s(ms)  ((ms)*0.001)
 
+const unsigned int TOKEN_START = 100;
+const unsigned int TOKEN_END = 101;
+
+const unsigned int EE_START = 200;
+const unsigned int EE_END = 201;
+
+const unsigned int CE_SEND_START = 300;
+const unsigned int CE_SEND_END = 301;
+
+const unsigned int CE_RECV_START = 400;
+const unsigned int CE_RECV_END = 401;
+
 bool SILENT = true;
 inline int xprintf(const char *format, ...)
 {
@@ -382,6 +394,12 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 					//cudaStreamSynchronize(STREAMS[CUR_DEVICE]);
 					cudaEventSynchronize(EVENTS[CUR_DEVICE]);
 					ret = cudaGetLastError();
+
+					if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
+						inject_action(CE_RECV_END);
+					if (kind == cudaMemcpyHostToDevice)
+						inject_action(CE_SEND_END);
+
 					state->unlock();
 					if(ret != cudaSuccess)
 						break;
@@ -395,8 +413,13 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 			}
 		}
 
-		if(state && !state->locked)
+		if(state && !state->locked) {
 			state->lock();
+			if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
+				inject_action(CE_RECV_START);
+			if (kind == cudaMemcpyHostToDevice)
+				inject_action(CE_SEND_START);
+		}
 
         //ret = cudaMemcpy(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind);
 		cudaMemcpyAsync(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind, STREAMS[CUR_DEVICE]);
@@ -429,11 +452,23 @@ static cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 	else {
 		ce_lock_state state(device_a, kind, count, device_b, migration);
 		state.lock();
+
+		if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
+			inject_action(CE_RECV_START);
+		if (kind == cudaMemcpyHostToDevice)
+			inject_action(CE_SEND_START);
+
 		ret = __chunkMemcpy(a_dst, a_src, count, kind, &state);
 		cudaEventSynchronize(cur_event());
 		//		cudaStreamSynchronize(cur_stream());
 		if(ret == cudaSuccess)
 			ret = cudaGetLastError();
+
+		if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
+			inject_action(CE_RECV_END);
+		if (kind == cudaMemcpyHostToDevice)
+			inject_action(CE_SEND_END);
+
 		state.unlock();
 	}
 	return ret;
@@ -1157,6 +1192,7 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 		goto out;
 
 	next_gpu = litmus_lock(TOKEN_LOCK);
+	inject_action(TOKEN_START);
 	{
 		MigrateIfNeeded(next_gpu);
 		unsigned int numcycles = ((unsigned int)(cur_hz() * gpu_sec_time))/num_kernels;
@@ -1170,6 +1206,7 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 		{
 			if(useEngineLocks() && !locked) {
 				litmus_lock(cur_ee());
+				inject_action(EE_START);
 				locked = true;
 			}
 
@@ -1180,6 +1217,7 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 //				cudaStreamSynchronize(cur_stream());
 				cudaEventRecord(cur_event(), cur_stream());
 				cudaEventSynchronize(cur_event());
+				inject_action(EE_END);
 				litmus_unlock(cur_ee());
 				locked = false;
 			}
@@ -1187,6 +1225,7 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 		if (locked) {
 			cudaEventRecord(cur_event(), cur_stream());
 			cudaEventSynchronize(cur_event());
+			inject_action(EE_END);
 			litmus_unlock(cur_ee());
 			locked = false;
 		}
@@ -1198,6 +1237,7 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 		if (MIGRATE_VIA_SYSMEM)
 			PullState();
 	}
+	inject_action(TOKEN_END);
 	litmus_unlock(TOKEN_LOCK);
 
 	last_gpu() = cur_gpu();
@@ -1696,6 +1736,11 @@ void apply_args(struct Args* args)
 	CHUNK_SIZE = args->chunk_size;
 	MIGRATE_VIA_SYSMEM = args->use_sysmem_migration;
 
+	if (args->scheduler == LITMUS && !ENABLE_AFFINITY)
+		TRACE_MIGRATIONS = true;
+	else if (args->scheduler == LITMUS)
+		TRACE_MIGRATIONS = false;
+
 	// roll back other globals to an initial state
 	CUR_DEVICE = -1;
 	LAST_DEVICE = -1;
@@ -2089,8 +2134,10 @@ int init_daemon(struct Args* args, int num_total_users, bool is_daemon)
 		pthread_mutex_unlock(daemon_mutex);
 	}
 
-	if (!my_run_entry)
+	if (!my_run_entry) {
+		fprintf(stderr, "Could not find task <wcet, gpu_wcet, period>: <%f %f %f>\n", args->wcet_ms, args->gpu_wcet_ms, args->period_ms);
 		return -1;
+	}
 	return 0;
 }
 
