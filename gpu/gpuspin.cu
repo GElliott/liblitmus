@@ -210,6 +210,10 @@ struct Args
 	double scale;
 
 	double duration;
+
+	bool is_aberrant;
+	double aberrant_prob;
+	double aberrant_factor;
 };
 
 
@@ -379,7 +383,7 @@ struct ce_lock_state
 				yield = litmus_dgl_should_yield_lock(locks, num_locks);
 			else
 				for(int l = num_locks - 1; l >= 0; --l)  // reverse order
-					yield = litmus_should_yield_lock(locks[l]);
+					yield |= litmus_should_yield_lock(locks[l]);
 		}
 		return (yield);
 	}
@@ -424,7 +428,7 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 				// optimization - don't unlock if no one else needs the engine
 				if (state->should_yield()) {
 					gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS); 
-					cudaEventSynchronize(EVENTS[CUR_DEVICE]);
+					cudaEventSynchronize(cur_event());
 					ret = cudaGetLastError();
 					if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
 						inject_action(CE_RECV_END);
@@ -455,8 +459,8 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 
         //ret = cudaMemcpy(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind);
 		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-		cudaMemcpyAsync(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind, STREAMS[CUR_DEVICE]);
-		cudaEventRecord(EVENTS[CUR_DEVICE], STREAMS[CUR_DEVICE]);
+		cudaMemcpyAsync(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind, cur_stream());
+		cudaEventRecord(cur_event(), cur_stream());
 		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 		if(state)
@@ -1219,33 +1223,41 @@ __global__ void docudaspin(float* data, /*unsigned int* iterations,*/ unsigned i
 	return;
 }
 
+
+int next_gpu = -1;
+static bool ee_locked = false;
+static bool early_exit = false;
+static bool have_token = false;
+
 static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double emergency_exit)
 {
-	int next_gpu;
-	bool ee_locked = false;
-	bool early_exit = false;
+//	int next_gpu;
+	next_gpu = -1;
+	ee_locked = false;
+	early_exit = false;
+	have_token = false;
 
 	if (gpu_sec_time <= 0.0)
 		goto out;
 	if (emergency_exit && wctime() > emergency_exit)
 		goto out;
 
-	gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-	next_gpu = litmus_lock(TOKEN_LOCK);
-	inject_action(TOKEN_START);
-	gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
-
 	LITMUS_TRY
 	{
 		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		next_gpu = litmus_lock(TOKEN_LOCK);
+		inject_action(TOKEN_START);
+		have_token = true;
+		__sync_synchronize();
 		MigrateIfNeeded(next_gpu);
 		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 		unsigned int numcycles = ((unsigned int)(cur_hz() * gpu_sec_time))/num_kernels;
 
-		if(SEND_SIZE > 0)
+		if(SEND_SIZE > 0) {
 			chunkMemcpy(this_gpu(d_state_data), h_send_data, SEND_SIZE,
-						cudaMemcpyHostToDevice, CUR_DEVICE, useEngineLocks());
+						cudaMemcpyHostToDevice, cur_gpu(), useEngineLocks());
+		}
 
 		for(unsigned int i = 0; i < num_kernels; ++i)
 		{
@@ -1255,50 +1267,59 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 				litmus_lock(cur_ee());
 				inject_action(EE_START);
 				ee_locked = true;
+				__sync_synchronize();
 			}
 			/* one block per sm, one warp per block */
 			docudaspin <<<cur_sms(), cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
-			if(useEngineLocks() && (!YIELD_LOCKS || (YIELD_LOCKS && litmus_should_yield_lock(cur_ee())))) {
-//				cudaStreamSynchronize(cur_stream());
+			if(useEngineLocks() &&
+				(i == num_kernels - 1 || /* last kernel */
+				 !YIELD_LOCKS         || /* always yeild */
+				 (YIELD_LOCKS && litmus_should_yield_lock(cur_ee())) /* we should yield */
+				)
+			   ) {
 				cudaEventRecord(cur_event(), cur_stream());
 				cudaEventSynchronize(cur_event());
 				inject_action(EE_END);
 				litmus_unlock(cur_ee());
 				ee_locked = false;
+				__sync_synchronize();
 			}
+
 			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		}
 
-		if (ee_locked) {
-			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-
-			cudaEventRecord(cur_event(), cur_stream());
-			cudaEventSynchronize(cur_event());
-			inject_action(EE_END);
-			litmus_unlock(cur_ee());
-
-			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
-			ee_locked = false;
-		}
-
-		if(RECV_SIZE > 0)
+		if(RECV_SIZE > 0) {
 			chunkMemcpy(h_recv_data, this_gpu(d_state_data), RECV_SIZE,
-						cudaMemcpyDeviceToHost, CUR_DEVICE, useEngineLocks());
+						cudaMemcpyDeviceToHost, cur_gpu(), useEngineLocks());
+		}
 
 		if (MIGRATE_VIA_SYSMEM) {
 			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 			PullState();
 			gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		}
+
+		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
+		inject_action(TOKEN_END);
+		litmus_unlock(TOKEN_LOCK);
+		last_gpu() = cur_gpu();
+		have_token = false;
+		__sync_synchronize();
+		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 	}
 	LITMUS_CATCH(SIG_BUDGET)
 	{
+		if (have_token)
+		{
 			cudaEventRecord(cur_event(), cur_stream());
 			cudaEventSynchronize(cur_event());
 
 			if (useEngineLocks()) {
-				/* unlock all engine locks. will fail safely if not held */
-				litmus_unlock(cur_ee());
+				if (ee_locked) {
+					litmus_unlock(cur_ee());
+				}
+
+				/* we don't know which CEs might be locked... unlock them all. */
 				if (NUM_COPY_ENGINES == 1) {
 					litmus_unlock(cur_send());
 				}
@@ -1311,16 +1332,14 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 					litmus_unlock(cur_recv());
 				}
 			}
-			early_exit = true;
+
+			litmus_unlock(TOKEN_LOCK);
+			last_gpu() = cur_gpu();
+		}
+
+		early_exit = true;
 	}
 	END_LITMUS_TRY
-
-	gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-	inject_action(TOKEN_END);
-	litmus_unlock(TOKEN_LOCK);
-	gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
-
-	last_gpu() = cur_gpu();
 
 	if (early_exit)
 		throw std::exception();
@@ -1361,7 +1380,6 @@ static void gpu_loop_for_linux(double gpu_sec_time, unsigned int num_kernels, do
 			docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
 			cudaEventRecord(cur_event(), cur_stream());
 			cudaEventSynchronize(cur_event());
-//			cudaStreamSynchronize(cur_stream());
 		}
 
 		if(RECV_SIZE > 0)
@@ -1846,6 +1864,8 @@ void apply_args(struct Args* args)
 		TRACE_MIGRATIONS = true;
 	else if (args->scheduler == LITMUS)
 		TRACE_MIGRATIONS = false;
+	else if (args->scheduler != LITMUS)
+		TRACE_MIGRATIONS = true;
 
 	WANT_SIGNALS = args->want_signals;
 
@@ -1945,6 +1965,9 @@ int __do_normal(struct Args* args)
 		job_no = 0;
 	}
 
+
+	ignore_litmus_signals(SIG_BUDGET_MASK);
+
 	init_rt_task_param(&param);
 	param.exec_cost = budget;
 	param.period = period;
@@ -1964,12 +1987,6 @@ int __do_normal(struct Args* args)
 		bail_out("could not setup rt task params\n");
 		goto out;
 	}
-
-	if (args->want_signals)
-		/* bind default longjmp signal handler to SIG_BUDGET. */
-		activate_litmus_signals(SIG_BUDGET_MASK, longjmp_on_litmus_signal);
-	else
-		ignore_litmus_signals(SIG_BUDGET_MASK);
 
 	if (args->gpu_using)
 		allocate_locks(args->num_gpu_tasks, args->scheduler != LITMUS);
@@ -2035,11 +2052,22 @@ int __do_normal(struct Args* args)
 
 	start = wctime();
 
+	if (args->want_signals) {
+		ignore_litmus_signals(SIG_BUDGET_MASK); /* flush signals? */
+		activate_litmus_signals(SIG_BUDGET_MASK, longjmp_on_litmus_signal);
+	}
+
 	if (!args->gpu_using) {
 		bool keepgoing;
 		do
 		{
 			double job_ms = wcet_dist_ms->random();
+			if (args->is_aberrant) {
+				double roll = drand48();
+				if (roll <= args->aberrant_prob)
+					job_ms *= args->aberrant_factor;
+			}
+
 			if (job_ms < 0.0)
 				job_ms = 0.0;
 			keepgoing = cjobfn(ms2s(job_ms * args->scale), start + args->duration);
@@ -2050,6 +2078,13 @@ int __do_normal(struct Args* args)
 		do
 		{
 			double job_ms = wcet_dist_ms->random();
+
+			if (args->is_aberrant) {
+				double roll = drand48();
+				if (roll <= args->aberrant_prob)
+					job_ms *= args->aberrant_factor;
+			}
+
 			if (job_ms < 0.0)
 				job_ms = 0.0;
 
@@ -2063,9 +2098,7 @@ int __do_normal(struct Args* args)
 		}while(keepgoing);
 	}
 
-	if (args->want_signals)
-		ignore_litmus_signals(SIG_BUDGET_MASK);
-	
+	ignore_litmus_signals(SIG_BUDGET_MASK);
 
 	if (args->gpu_using && ENABLE_RT_AUX_THREADS) {
 		if (args->scheduler == LITMUS) {
@@ -2126,10 +2159,12 @@ int do_normal(struct Args* args)
 		init_linux();
 
 	if (args->gpu_using) {
+#if 0
 		signal(SIGABRT, catch_exit);
 		signal(SIGTERM, catch_exit);
 		signal(SIGQUIT, catch_exit);
 		signal(SIGSEGV, catch_exit);
+#endif
 
 		cudaSetDeviceFlags(cudaDeviceScheduleSpin);
 		init_cuda(args->num_gpu_tasks);
@@ -2419,7 +2454,7 @@ int do_daemon(struct Args* args)
 }
 
 #define CPU_OPTIONS "p:z:c:wlveio:f:s:q:X:L:Q:d:"
-#define GPU_OPTIONS "g:y:r:C:E:DG:xS:R:T:Z:aFm:b:MNIk:VW:u"
+#define GPU_OPTIONS "g:y:r:C:E:DG:xS:R:T:Z:aFm:b:MNIk:VW:uU:O:"
 #define PROXY_OPTIONS "B:PA"
 
 // concat the option strings
@@ -2433,7 +2468,6 @@ int main(int argc, char** argv)
 	eRunMode run_mode = NORMAL;
 
 	int opt;
-
 	progname = argv[0];
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
@@ -2446,6 +2480,14 @@ int main(int argc, char** argv)
 			break;
 		case 'A':
 			run_mode = DAEMON;
+			break;
+		case 'U':
+			myArgs.is_aberrant = true;
+			myArgs.aberrant_prob = (double)atoi(optarg);
+			break;
+		case 'O':
+			myArgs.is_aberrant = true;
+			myArgs.aberrant_factor = atof(optarg);
 			break;
 
 
@@ -2639,6 +2681,9 @@ int main(int argc, char** argv)
 		myArgs.period_ms = atof(argv[optind + 2]);
 		myArgs.duration  = atof(argv[optind + 3]);
 	}
+
+	double rate = (1000.0/myArgs.period_ms)*myArgs.aberrant_prob;
+	myArgs.aberrant_prob = 1.0 / rate;
 
 	if (myArgs.num_tasks == 0 || myArgs.num_gpu_tasks == 0) {
 		// safety w.r.t. shared mem.
