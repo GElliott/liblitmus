@@ -24,20 +24,13 @@ void init_rt_task_param(struct rt_task* param);
 int set_rt_task_param(pid_t pid, struct rt_task* param);
 int get_rt_task_param(pid_t pid, struct rt_task* param);
 
-/* Release-master-aware functions for getting the first
- * CPU in a particular cluster or partition. Use these
- * to set rt_task::cpu for cluster/partitioned scheduling.
- */
-int partition_to_cpu(int partition);
-int cluster_to_first_cpu(int cluster, int cluster_size);
-
 /* Convenience functions for setting up real-time tasks.
  * Default behaviors set by init_rt_task_params() used.
  * Also sets affinity masks for clustered/partitions
  * functions. Time units in nanoseconds. */
 int sporadic_global(lt_t e_ns, lt_t p_ns);
 int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition);
-int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster, int cluster_size);
+int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster);
 
 /* simple time unit conversion macros */
 #define s2ns(s)   ((s)*1000000000LL)
@@ -93,12 +86,12 @@ void exit_litmus(void);
 typedef int (*rt_fn_t)(void*);
 
 /* These two functions configure the RT task to use enforced exe budgets.
- * Partitioned scheduling: cluster = desired partition, cluster_size = 1
- * Global scheduling: cluster = 0, cluster_size = 0
+ * Partitioned/clustered scheduling: cluster = desired partition
+ * Global scheduling: cluster = 0
  */
-int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
+int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster,
 			lt_t wcet, lt_t period, unsigned int prio);
-int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster, int cluster_size,
+int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster,
 			lt_t wcet, lt_t period, unsigned int prio, task_class_t cls);
 
 /*	per-task modes */
