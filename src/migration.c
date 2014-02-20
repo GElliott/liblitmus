@@ -151,3 +151,21 @@ int be_migrate_to_domain(int domain)
 {
 	return be_migrate_thread_to_domain(0, domain);
 }
+
+
+/* deprecated functions. */
+
+int be_migrate_to_cluster(int cluster, int cluster_size)
+{
+	return be_migrate_to_domain(cluster);
+}
+
+int cluster_to_first_cpu(int cluster, int cluster_size)
+{
+	return domain_to_first_cpu(cluster);
+}
+
+int partition_to_cpu(int partition)
+{
+	return domain_to_first_cpu(partition);
+}
