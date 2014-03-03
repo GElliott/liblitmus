@@ -184,7 +184,7 @@ static int job(double exec_time, double program_end, int lock_od, double cs_leng
 	}
 }
 
-#define OPTSTR "p:z:c:wlveio:f:s:q:X:L:Q:"
+#define OPTSTR "p:c:wlveo:f:s:q:X:L:Q:"
 int main(int argc, char** argv)
 {
 	int ret;
@@ -194,7 +194,6 @@ int main(int argc, char** argv)
 	unsigned int priority = LITMUS_LOWEST_PRIORITY;
 	int migrate = 0;
 	int cluster = 0;
-	int cluster_size = 1;
 	int opt;
 	int wait = 0;
 	int test_loop = 0;
@@ -226,9 +225,6 @@ int main(int argc, char** argv)
 		case 'p':
 			cluster = atoi(optarg);
 			migrate = 1;
-			break;
-		case 'z':
-			cluster_size = atoi(optarg);
 			break;
 		case 'q':
 			priority = atoi(optarg);
@@ -330,7 +326,7 @@ int main(int argc, char** argv)
 		duration += period_ms * 0.001 * (num_jobs - 1);
 
 	if (migrate) {
-		ret = be_migrate_to_cluster(cluster, cluster_size);
+		ret = be_migrate_to_domain(cluster);
 		if (ret < 0)
 			bail_out("could not migrate to target partition or cluster.");
 	}
@@ -346,7 +342,7 @@ int main(int argc, char** argv)
 			PRECISE_SIGNALS : NO_SIGNALS;
 				
 	if (migrate)
-		param.cpu = cluster_to_first_cpu(cluster, cluster_size);
+		param.cpu = domain_to_first_cpu(cluster);
 	ret = set_rt_task_param(gettid(), &param);
 	if (ret < 0)
 		bail_out("could not setup rt task params");

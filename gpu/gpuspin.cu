@@ -122,13 +122,13 @@ bool ENABLE_RT_AUX_THREADS = true;
 
 enum eGpuSyncMode
 {
-	IKGLP_MODE,
-	IKGLP_WC_MODE, /* work-conserving IKGLP. no GPU is left idle, but breaks optimality */
+	R2DGLP_MODE,
+	R2DGLP_WC_MODE, /* work-conserving R2DGLP. no GPU is left idle, but breaks optimality */
 	KFMLP_MODE,
 	RGEM_MODE,
 };
 
-eGpuSyncMode GPU_SYNC_MODE = IKGLP_MODE;
+eGpuSyncMode GPU_SYNC_MODE = R2DGLP_MODE;
 
 enum eCudaSyncMode
 {
@@ -338,7 +338,7 @@ struct ce_lock_state
 		else
 		{
 			gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-			for(int l = 0; l < num_locks; ++l)
+			for(size_t l = 0; l < num_locks; ++l)
 			{
 				litmus_lock(locks[l]);
 			}
@@ -532,17 +532,17 @@ void allocate_locks_litmus(void)
 	int base_name = GPU_PARTITION * 100 + EXP_OFFSET * 200;
 	++EXP_OFFSET;
 
-	if (GPU_SYNC_MODE == IKGLP_MODE) {
-		/* Standard (optimal) IKGLP */
+	if (GPU_SYNC_MODE == R2DGLP_MODE) {
+		/* Standard (optimal) R2DGLP */
 		TOKEN_LOCK = open_gpusync_token_lock(*fd,
 						base_name,  /* name */
 						GPU_PARTITION_SIZE,
 						GPU_PARTITION*GPU_PARTITION_SIZE,
 						RHO,
-						IKGLP_M_IN_FIFOS,
+						R2DGLP_M_IN_FIFOS,
 						(!RELAX_FIFO_MAX_LEN) ?
-						IKGLP_OPTIMAL_FIFO_LEN :
-						IKGLP_UNLIMITED_FIFO_LEN,
+						R2DGLP_OPTIMAL_FIFO_LEN :
+						R2DGLP_UNLIMITED_FIFO_LEN,
 						ENABLE_AFFINITY);
 	}
 	else if (GPU_SYNC_MODE == KFMLP_MODE) {
@@ -552,8 +552,8 @@ void allocate_locks_litmus(void)
 						GPU_PARTITION_SIZE,
 						GPU_PARTITION*GPU_PARTITION_SIZE,
 						RHO,
-						IKGLP_UNLIMITED_IN_FIFOS,
-						IKGLP_UNLIMITED_FIFO_LEN,
+						R2DGLP_UNLIMITED_IN_FIFOS,
+						R2DGLP_UNLIMITED_FIFO_LEN,
 						ENABLE_AFFINITY);
 	}
 	else if (GPU_SYNC_MODE == RGEM_MODE) {
@@ -567,8 +567,8 @@ void allocate_locks_litmus(void)
 						1,
 						ENABLE_AFFINITY);
 	}
-	else if (GPU_SYNC_MODE == IKGLP_WC_MODE) {
-		/* Non-optimal IKGLP that never lets a replica idle if there are pending
+	else if (GPU_SYNC_MODE == R2DGLP_WC_MODE) {
+		/* Non-optimal R2DGLP that never lets a replica idle if there are pending
 		 * token requests. */
 		int max_simult_run = std::max(CPU_PARTITION_SIZE, RHO*GPU_PARTITION_SIZE);
 		int max_fifo_len = (int)ceil((float)max_simult_run / (RHO*GPU_PARTITION_SIZE));
@@ -580,7 +580,7 @@ void allocate_locks_litmus(void)
 						max_simult_run,
 						(!RELAX_FIFO_MAX_LEN) ?
 							max_fifo_len :
-							IKGLP_UNLIMITED_FIFO_LEN,
+							R2DGLP_UNLIMITED_FIFO_LEN,
 						ENABLE_AFFINITY);
 	}
 	else {
@@ -1807,7 +1807,7 @@ void set_defaults(struct Args* args)
 	args->gpu_wcet_ms = 0.0;
 	args->period_ms = -1.0;
 	args->budget_ms = -1.0;
-	args->gpusync_mode = IKGLP_MODE;
+	args->gpusync_mode = R2DGLP_MODE;
 	args->sync_mode = BLOCKING;
 	args->gpu_using = false;
 	args->enable_affinity = false;
@@ -1979,7 +1979,7 @@ int __do_normal(struct Args* args)
 		PRECISE_SIGNALS : NO_SIGNALS;
 	param.drain_policy = args->drain_policy;
 	param.drain_policy = args->drain_policy;
-	param.release_policy = PERIODIC;
+	param.release_policy = TASK_PERIODIC;
 	param.cpu = cluster_to_first_cpu(args->cluster, args->cluster_size);
 
 	ret = set_rt_task_param(gettid(), &param);
@@ -2545,7 +2545,7 @@ int main(int argc, char** argv)
 		case 'G':
 //			GPU_SYNC_MODE = (eGpuSyncMode)atoi(optarg);
 			myArgs.gpusync_mode = (eGpuSyncMode)atoi(optarg);
-//			assert(GPU_SYNC_MODE >= IKGLP_MODE && GPU_SYNC_MODE <= RGEM_MODE);
+//			assert(GPU_SYNC_MODE >= R2DGLP_MODE && GPU_SYNC_MODE <= RGEM_MODE);
 			break;
 		case 'a':
 //			ENABLE_AFFINITY = true;

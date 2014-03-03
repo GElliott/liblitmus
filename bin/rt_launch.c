@@ -42,8 +42,7 @@ void usage(char *error) {
 }
 
 
-#define OPTSTR "p:z:c:vwq:t"
-
+#define OPTSTR "p:c:vwq:"
 int main(int argc, char** argv)
 {
 	int ret;
@@ -51,7 +50,6 @@ int main(int argc, char** argv)
 	lt_t period;
 	int migrate = 0;
 	int cluster = 0;
-	int cluster_size = 1;
 	int opt;
 	int verbose = 0;
 	int wait = 0;
@@ -72,9 +70,6 @@ int main(int argc, char** argv)
 		case 'p':
 			cluster = atoi(optarg);
 			migrate = 1;
-			break;
-		case 'z':
-			cluster_size = atoi(optarg);
 			break;
 		case 'q':
 			priority = atoi(optarg);
@@ -119,7 +114,7 @@ int main(int argc, char** argv)
 	info.argv      = argv + optind + 2;
 	info.wait      = wait;
 	if (migrate) {
-		ret = be_migrate_to_cluster(cluster, cluster_size);
+		ret = be_migrate_to_domain(cluster);
 		if (ret < 0)
 			bail_out("could not migrate to target partition or cluster");
 	}
@@ -132,9 +127,9 @@ int main(int argc, char** argv)
 	param.budget_policy = budget_pol;
 
 	if (migrate)
-		param.cpu = cluster_to_first_cpu(cluster, cluster_size);
+		param.cpu = domain_to_first_cpu(cluster);
 
-	ret = create_rt_task(launch, &info, &param);
+	ret = ___create_rt_task(launch, &info, &param);
 
 	if (ret < 0)
 		bail_out("could not create rt child process");

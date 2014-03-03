@@ -469,16 +469,16 @@ void* rt_thread(void* _ctx)
 										 );
 	}
 	else {
-//		ctx->kexclu = open_ikglp_sem(ctx->fd, 0, &NUM_GPUS);
+//		ctx->kexclu = open_r2dglp_sem(ctx->fd, 0, &NUM_GPUS);
 		ctx->kexclu = open_gpusync_token_lock(ctx->fd,
 								0,  /* name */
 								NUM_GPUS,
 								GPU_OFFSET,
 								NUM_SIMULT_USERS,
-								IKGLP_M_IN_FIFOS,
+								R2DGLP_M_IN_FIFOS,
 								(!RELAX_FIFO_MAX_LEN) ?
-									  IKGLP_OPTIMAL_FIFO_LEN :
-									  IKGLP_UNLIMITED_FIFO_LEN,
+									  R2DGLP_OPTIMAL_FIFO_LEN :
+									  R2DGLP_UNLIMITED_FIFO_LEN,
 								ENABLE_AFFINITY
 								);
 	}

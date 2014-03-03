@@ -15,21 +15,17 @@ extern "C" {
  */
 #include "litmus/rt_param.h"
 #include "litmus/signal.h"
+#include "litmus/fpmath.h"
 
 #include "asm/cycles.h" /* for null_call() */
 
 #include "migration.h"
 
+#define SCHED_LITMUS 6
+
 void init_rt_task_param(struct rt_task* param);
 int set_rt_task_param(pid_t pid, struct rt_task* param);
 int get_rt_task_param(pid_t pid, struct rt_task* param);
-
-/* Release-master-aware functions for getting the first
- * CPU in a particular cluster or partition. Use these
- * to set rt_task::cpu for cluster/partitioned scheduling.
- */
-int partition_to_cpu(int partition);
-int cluster_to_first_cpu(int cluster, int cluster_size);
 
 /* Convenience functions for setting up real-time tasks.
  * Default behaviors set by init_rt_task_params() used.
@@ -37,7 +33,7 @@ int cluster_to_first_cpu(int cluster, int cluster_size);
  * functions. Time units in nanoseconds. */
 int sporadic_global(lt_t e_ns, lt_t p_ns);
 int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition);
-int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster, int cluster_size);
+int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster);
 
 /* simple time unit conversion macros */
 #define s2ns(s)   ((s)*1000000000LL)
@@ -57,11 +53,11 @@ typedef enum  {
 	PCP_SEM		= 5,
 
 	FIFO_MUTEX	= 6,
-	IKGLP_SEM	= 7,
+	R2DGLP_SEM	= 7,
 	KFMLP_SEM	= 8,
 
-	IKGLP_SIMPLE_GPU_AFF_OBS = 9,
-	IKGLP_GPU_AFF_OBS = 10,
+	R2DGLP_SIMPLE_GPU_AFF_OBS = 9,
+	R2DGLP_GPU_AFF_OBS = 10,
 	KFMLP_SIMPLE_GPU_AFF_OBS = 11,
 	KFMLP_GPU_AFF_OBS = 12,
 
@@ -119,8 +115,15 @@ void exit_litmus(void);
 /* A real-time program. */
 typedef int (*rt_fn_t)(void*);
 
-/* exec another program as a real-time task. */
-int create_rt_task(rt_fn_t rt_prog, void *arg, struct rt_task* param);
+/* These two functions configure the RT task to use enforced exe budgets.
+ * Partitioned/clustered scheduling: cluster = desired partition
+ * Global scheduling: cluster = 0
+ */
+int create_rt_task(rt_fn_t rt_prog, void *arg, int cluster,
+			lt_t wcet, lt_t period, unsigned int prio);
+int __create_rt_task(rt_fn_t rt_prog, void *arg, int cluster,
+			lt_t wcet, lt_t period, unsigned int prio, task_class_t cls);
+int ___create_rt_task(rt_fn_t rt_prog, void *arg, struct rt_task* param);
 
 /*	per-task modes */
 enum rt_task_mode_t {
@@ -202,7 +205,7 @@ static inline int open_prioq_sem(int fd, int name)
 	return od_open(fd, PRIOQ_MUTEX, name);
 }
 
-int open_ikglp_sem(int fd, int name, unsigned int nr_replicas);
+int open_r2dglp_sem(int fd, int name, unsigned int nr_replicas);
 
 /* KFMLP-based Token Lock for GPUs
  * Legacy; mostly untested.
@@ -213,19 +216,19 @@ int open_kfmlp_gpu_sem(int fd, int name,
 
 /* -- Example Configurations --
  *
- * Optimal IKGLP Configuration:
- *   max_in_fifos = IKGLP_M_IN_FIFOS
- *   max_fifo_len = IKGLP_OPTIMAL_FIFO_LEN
+ * Optimal R2DGLP Configuration:
+ *   max_in_fifos = R2DGLP_M_IN_FIFOS
+ *   max_fifo_len = R2DGLP_OPTIMAL_FIFO_LEN
  *
- * IKGLP with Relaxed FIFO Length Constraints:
- *   max_in_fifos = IKGLP_M_IN_FIFOS
- *   max_fifo_len = IKGLP_UNLIMITED_FIFO_LEN
+ * R2DGLP with Relaxed FIFO Length Constraints:
+ *   max_in_fifos = R2DGLP_M_IN_FIFOS
+ *   max_fifo_len = R2DGLP_UNLIMITED_FIFO_LEN
  * NOTE: max_in_fifos still limits total number of requests in FIFOs.
  *
  * KFMLP Configuration (FIFO queues only):
- *   max_in_fifos = IKGLP_UNLIMITED_IN_FIFOS
- *   max_fifo_len = IKGLP_UNLIMITED_FIFO_LEN
- * NOTE: Uses a non-optimal IKGLP configuration, not an actual KFMLP_SEM.
+ *   max_in_fifos = R2DGLP_UNLIMITED_IN_FIFOS
+ *   max_fifo_len = R2DGLP_UNLIMITED_FIFO_LEN
+ * NOTE: Uses a non-optimal R2DGLP configuration, not an actual KFMLP_SEM.
  *
  * RGEM-like Configuration (priority queues only):
  *   max_in_fifos = 1..(rho*num_gpus)
@@ -239,8 +242,8 @@ int open_kfmlp_gpu_sem(int fd, int name,
  *
  * Other constraints:
  *  - max_in_fifos <= max_fifo_len * rho
- *        (unless max_in_fifos = IKGLP_UNLIMITED_IN_FIFOS and
- *         max_fifo_len = IKGLP_UNLIMITED_FIFO_LEN
+ *        (unless max_in_fifos = R2DGLP_UNLIMITED_IN_FIFOS and
+ *         max_fifo_len = R2DGLP_UNLIMITED_FIFO_LEN
  *  - rho > 0
  *  - num_gpus > 0
  */

@@ -28,11 +28,11 @@ static struct {
 	LP(PCP),
 
 	{FIFO_MUTEX, "FIFO"},
-	LP(IKGLP),
+	LP(R2DGLP),
 	LP(KFMLP),
 
-	{IKGLP_SIMPLE_GPU_AFF_OBS, "IKGLP-GPU-SIMPLE"},
-	{IKGLP_GPU_AFF_OBS, "IKGLP-GPU"},
+	{R2DGLP_SIMPLE_GPU_AFF_OBS, "R2DGLP-GPU-SIMPLE"},
+	{R2DGLP_GPU_AFF_OBS, "R2DGLP-GPU"},
 	{KFMLP_SIMPLE_GPU_AFF_OBS, "KFMLP-GPU-SIMPLE"},
 	{KFMLP_GPU_AFF_OBS, "KFMLP-GPU"},
 
@@ -96,7 +96,7 @@ void init_rt_task_param(struct rt_task* tp)
 	 *  - class = RT_CLASS_SOFT
 	 *  - budget policy = NO_ENFORCEMENT
 	 *  - fixed priority = LITMUS_LOWEST_PRIORITY
-	 *  - release policy = SPORADIC
+	 *  - release policy = TASK_SPORADIC
 	 *  - cpu assignment = 0
 	 *
 	 * User must still set the following fields to non-zero values:
@@ -115,7 +115,7 @@ void init_rt_task_param(struct rt_task* tp)
 	tp->budget_policy = NO_ENFORCEMENT;
 	tp->drain_policy = DRAIN_SIMPLE;
 	tp->budget_signal_policy = NO_SIGNALS;
-	tp->release_policy = SPORADIC;
+	tp->release_policy = TASK_SPORADIC;
 }
 
 task_class_t str2class(const char* str)
@@ -148,7 +148,7 @@ int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition)
 	int ret;
 	struct rt_task param;
 
-	ret = be_migrate_to_partition(partition);
+	ret = be_migrate_to_domain(partition);
 	check("be_migrate_to_partition()");
 	if (ret != 0)
 		return ret;
@@ -156,17 +156,17 @@ int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition)
 	init_rt_task_param(&param);
 	param.exec_cost = e_ns;
 	param.period = p_ns;
-	param.cpu = partition_to_cpu(partition);
+	param.cpu = domain_to_first_cpu(partition);
 
 	return set_rt_task_param(gettid(), &param);
 }
 
-int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster, int cluster_size)
+int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster)
 {
 	int ret;
 	struct rt_task param;
 
-	ret = be_migrate_to_cluster(cluster, cluster_size);
+	ret = be_migrate_to_domain(cluster);
 	check("be_migrate_to_cluster()");
 	if (ret != 0)
 		return ret;
@@ -174,7 +174,7 @@ int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster, int cluster_size)
 	init_rt_task_param(&param);
 	param.exec_cost = e_ns;
 	param.period = p_ns;
-	param.cpu = cluster_to_first_cpu(cluster, cluster_size);
+	param.cpu = domain_to_first_cpu(cluster);
 
 	return set_rt_task_param(gettid(), &param);
 }
@@ -242,54 +242,15 @@ int open_kfmlp_gpu_sem(int fd, int name,
 }
 
 
-//int open_ikglp_gpu_sem(int fd, int name, int num_gpus, int gpu_offset, int rho, int affinity_aware, int relax_max_fifo_len)
-//{
-//	int lock_od;
-//	int affinity_od;
-//	int num_replicas;
-//	struct gpu_affinity_observer_args aff_args;
-//	int aff_type;
-//
-//	// number of GPU tokens
-//	num_replicas = num_gpus * num_simult_users;
-//
-//	// create the GPU token lock
-//	lock_od = open_ikglp_sem(fd, name, (void*)&num_replicas);
-//	if(lock_od < 0) {
-//		perror("open_ikglp_sem");
-//		return -1;
-//	}
-//
-//	// create the affinity method to use.
-//	// "no affinity" -> KFMLP_SIMPLE_GPU_AFF_OBS
-//	aff_args.obs.lock_od = lock_od;
-//	aff_args.replica_to_gpu_offset = gpu_offset;
-//	aff_args.nr_simult_users = num_simult_users;
-//	aff_args.relaxed_rules = (relax_max_fifo_len) ? 1 : 0;
-//
-//	aff_type = (affinity_aware) ? IKGLP_GPU_AFF_OBS : IKGLP_SIMPLE_GPU_AFF_OBS;
-//	affinity_od = od_openx(fd, aff_type, name+1, &aff_args);
-//	if(affinity_od < 0) {
-//		perror("open_ikglp_aff");
-//		return -1;
-//	}
-//
-//	return lock_od;
-//}
-
-
-
-
-int open_ikglp_sem(int fd, int name, unsigned int nr_replicas)
+int open_r2dglp_sem(int fd, int name, unsigned int nr_replicas)
 {
-	struct ikglp_args args = {
+	struct r2dglp_args args = {
 		.nr_replicas = nr_replicas,
-		.max_in_fifos = IKGLP_M_IN_FIFOS,
-		.max_fifo_len = IKGLP_OPTIMAL_FIFO_LEN};
+		.max_in_fifos = R2DGLP_M_IN_FIFOS,
+		.max_fifo_len = R2DGLP_OPTIMAL_FIFO_LEN};
 
-	return od_openx(fd, IKGLP_SEM, name, &args);
+	return od_openx(fd, R2DGLP_SEM, name, &args);
 }
-
 
 
 int open_gpusync_token_lock(int fd, int name,
@@ -301,7 +262,7 @@ int open_gpusync_token_lock(int fd, int name,
 	int lock_od;
 	int affinity_od;
 
-	struct ikglp_args args = {
+	struct r2dglp_args args = {
 		.nr_replicas = num_gpus*rho,
 		.max_in_fifos = max_in_fifos,
 		.max_fifo_len = max_fifo_len,
@@ -314,14 +275,14 @@ int open_gpusync_token_lock(int fd, int name,
 		return -1;
 	}
 
-	if ((max_in_fifos != IKGLP_UNLIMITED_IN_FIFOS) &&
-		(max_fifo_len != IKGLP_UNLIMITED_FIFO_LEN) &&
+	if ((max_in_fifos != R2DGLP_UNLIMITED_IN_FIFOS) &&
+		(max_fifo_len != R2DGLP_UNLIMITED_FIFO_LEN) &&
 		(max_in_fifos > args.nr_replicas * max_fifo_len)) {
 		perror("open_gpusync_sem");
 		return(-1);
 	}
 
-	lock_od = od_openx(fd, IKGLP_SEM, name, &args);
+	lock_od = od_openx(fd, R2DGLP_SEM, name, &args);
 	if(lock_od < 0) {
 		perror("open_gpusync_sem");
 		return -1;
@@ -331,9 +292,9 @@ int open_gpusync_token_lock(int fd, int name,
 	aff_args.obs.lock_od = lock_od;
 	aff_args.replica_to_gpu_offset = gpu_offset;
 	aff_args.rho = rho;
-	aff_args.relaxed_rules = (max_fifo_len == IKGLP_UNLIMITED_FIFO_LEN) ? 1 : 0;
+	aff_args.relaxed_rules = (max_fifo_len == R2DGLP_UNLIMITED_FIFO_LEN) ? 1 : 0;
 
-	aff_type = (enable_affinity_heuristics) ? IKGLP_GPU_AFF_OBS : IKGLP_SIMPLE_GPU_AFF_OBS;
+	aff_type = (enable_affinity_heuristics) ? R2DGLP_GPU_AFF_OBS : R2DGLP_SIMPLE_GPU_AFF_OBS;
 	affinity_od = od_openx(fd, aff_type, name+1, &aff_args);
 	if(affinity_od < 0) {
 		perror("open_gpusync_affinity");

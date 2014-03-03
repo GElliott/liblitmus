@@ -85,9 +85,9 @@ int NUM_LOCKS = 1;
 int NUM_REPLICAS = 1;
 int NAMESPACE = 0;
 int *LOCKS = NULL;
-int IKGLP_LOCK = 0;
+int R2DGLP_LOCK = 0;
 int USE_DGLS = 0;
-int NEST_IN_IKGLP = 0;
+int NEST_IN_R2DGLP = 0;
 
 int WAIT = 0;
 
@@ -95,7 +95,7 @@ enum eLockType
 {
 	FIFO,
 	PRIOQ,
-	IKGLP
+	R2DGLP
 };
 
 eLockType LOCK_TYPE = FIFO;
@@ -126,8 +126,8 @@ int job(lt_t exec_ns, lt_t budget_ns)
 					block_litmus_signals(SIG_BUDGET);
 
 				if(CXS_OVERRUN) {
-					if (NEST_IN_IKGLP)
-						litmus_lock(IKGLP_LOCK);
+					if (NEST_IN_R2DGLP)
+						litmus_lock(R2DGLP_LOCK);
 					if (USE_DGLS)
 						litmus_dgl_lock(LOCKS, NUM_LOCKS);
 					else
@@ -147,8 +147,8 @@ int job(lt_t exec_ns, lt_t budget_ns)
 					else
 						for(int i = NUM_LOCKS-1; i >= 0; --i)
 							litmus_unlock(LOCKS[i]);
-					if (NEST_IN_IKGLP)
-						litmus_unlock(IKGLP_LOCK);
+					if (NEST_IN_R2DGLP)
+						litmus_unlock(R2DGLP_LOCK);
 				}
 
 				if (SIGNALS && BLOCK_SIGNALS_ON_SLEEP)
@@ -233,10 +233,10 @@ int main(int argc, char** argv)
 			LOCK_TYPE = PRIOQ;
 			break;
 		case 'i':
-			LOCK_TYPE = IKGLP;
+			LOCK_TYPE = R2DGLP;
 			break;
 		case 'x':
-			NEST_IN_IKGLP = 1;
+			NEST_IN_R2DGLP = 1;
 			break;
 		case 'w':
 			WAIT = 1;
@@ -263,10 +263,10 @@ int main(int argc, char** argv)
 
 	assert(!BLOCK_SIGNALS_ON_SLEEP || (BLOCK_SIGNALS_ON_SLEEP && SIGNALS));
 	assert(!CXS_OVERRUN || (CXS_OVERRUN && WAIT));
-	assert(LOCK_TYPE != IKGLP || NUM_LOCKS == 1);
-	assert(LOCK_TYPE != IKGLP || (LOCK_TYPE == IKGLP && !NEST_IN_IKGLP));
+	assert(LOCK_TYPE != R2DGLP || NUM_LOCKS == 1);
+	assert(LOCK_TYPE != R2DGLP || (LOCK_TYPE == R2DGLP && !NEST_IN_R2DGLP));
 	assert(NUM_LOCKS > 0);
-	if (LOCK_TYPE == IKGLP || NEST_IN_IKGLP)
+	if (LOCK_TYPE == R2DGLP || NEST_IN_R2DGLP)
 		assert(NUM_REPLICAS >= 1);
 
 	LOCKS = new int[NUM_LOCKS];
@@ -282,7 +282,7 @@ int main(int argc, char** argv)
 	init_rt_task_param(&param);
 	param.exec_cost = budget_ns;
 	param.period = p_ns;
-	param.release_policy = PERIODIC;
+	param.release_policy = TASK_PERIODIC;
 	param.drain_policy = drain_policy;
 	if (!SIGNALS)
 		param.budget_policy = PRECISE_ENFORCEMENT;
@@ -313,8 +313,8 @@ int main(int argc, char** argv)
 				case PRIOQ:
 					lock = open_prioq_sem(NAMESPACE, i);
 					break;
-				case IKGLP:
-					lock = open_ikglp_sem(NAMESPACE, i, NUM_REPLICAS);
+				case R2DGLP:
+					lock = open_r2dglp_sem(NAMESPACE, i, NUM_REPLICAS);
 					break;
 			}
 			if (lock < 0) {
@@ -324,9 +324,9 @@ int main(int argc, char** argv)
 			LOCKS[i] = lock;
 		}
 
-		if (NEST_IN_IKGLP) {
-			IKGLP_LOCK = open_ikglp_sem(NAMESPACE, i, NUM_REPLICAS);
-			if (IKGLP_LOCK < 0) {
+		if (NEST_IN_R2DGLP) {
+			R2DGLP_LOCK = open_r2dglp_sem(NAMESPACE, i, NUM_REPLICAS);
+			if (R2DGLP_LOCK < 0) {
 				perror("open_sem");
 				exit(-1);
 			}

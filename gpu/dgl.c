@@ -79,7 +79,7 @@ int USE_PRIOQ = 0;
 struct thread_context {
 	int id;
 	int fd;
-	int ikglp;
+	int r2dglp;
 	int od[MAX_SEMS];
 	int count;
 	unsigned int rand;
@@ -173,11 +173,11 @@ void* rt_thread(void* _ctx)
 	TH_CALL( set_rt_task_param(gettid(), &param) );
 
 	if (NUM_REPLICAS) {
-		ctx->ikglp = open_ikglp_sem(ctx->fd, 0, NUM_REPLICAS);
-		if(ctx->ikglp < 0)
-			perror("open_ikglp_sem");
+		ctx->r2dglp = open_r2dglp_sem(ctx->fd, 0, NUM_REPLICAS);
+		if(ctx->r2dglp < 0)
+			perror("open_r2dglp_sem");
 		else
-			xfprintf(stdout, "ikglp od = %d\n", ctx->ikglp);
+			xfprintf(stdout, "r2dglp od = %d\n", ctx->r2dglp);
 	}
 
 
@@ -219,8 +219,8 @@ void* rt_thread(void* _ctx)
 
 
 		if(NUM_REPLICAS) {
-			replica = litmus_lock(ctx->ikglp);
-			xfprintf(stdout, "[%d] got ikglp replica %d.\n", ctx->id, replica);
+			replica = litmus_lock(ctx->r2dglp);
+			xfprintf(stdout, "[%d] got r2dglp replica %d.\n", ctx->id, replica);
 		}
 
 
@@ -235,8 +235,8 @@ void* rt_thread(void* _ctx)
 		litmus_dgl_unlock(dgl, dgl_size);
 
 		if(NUM_REPLICAS) {
-			xfprintf(stdout, "[%d]: freeing ikglp replica %d.\n", ctx->id, replica);
-			litmus_unlock(ctx->ikglp);
+			xfprintf(stdout, "[%d]: freeing r2dglp replica %d.\n", ctx->id, replica);
+			litmus_unlock(ctx->r2dglp);
 		}
 
 		if(SLEEP_BETWEEN_JOBS && !do_exit) {
