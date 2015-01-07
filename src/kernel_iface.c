@@ -2,7 +2,7 @@
 #include <sys/fcntl.h> /* for O_RDWR */
 #include <sys/unistd.h>
 #include <sched.h> /* for sched_yield() */
-
+#include <assert.h>
 
 #include <stdio.h>
 
@@ -140,6 +140,76 @@ int requested_to_preempt(void)
 	return (likely(ctrl_page != NULL) && ctrl_page->sched.np.preempt);
 }
 
+void enter_pgm_wait(void)
+{
+	if (likely(ctrl_page != NULL) || init_kernel_iface() == 0) {
+		assert(!ctrl_page->pgm_waiting);
+		ctrl_page->pgm_waiting = 1;
+		ctrl_page->pgm_check_deadline = 1;
+		__sync_synchronize();
+	}
+	else {
+		fprintf(stderr, "enter_pgm_wait: control page not mapped!\n");
+	}
+}
+
+void enter_pgm_wait_no_deadline_shift(void)
+{
+	if (likely(ctrl_page != NULL) || init_kernel_iface() == 0) {
+		assert(!ctrl_page->pgm_waiting);
+		ctrl_page->pgm_waiting = 1;
+		__sync_synchronize();
+	}
+	else {
+		fprintf(stderr, "enter_pgm_wait: control page not mapped!\n");
+	}
+}
+
+void exit_pgm_wait(void)
+{
+	if (likely(ctrl_page != NULL)) {
+		assert(ctrl_page->pgm_waiting);
+		ctrl_page->pgm_waiting = 0;
+		ctrl_page->pgm_check_deadline = 0;
+		__sync_synchronize();
+	}
+	else {
+		fprintf(stderr, "exit_pgm_wait: control page not mapped!\n");
+	}
+}
+
+void enter_pgm_send(void)
+{
+	if (likely(ctrl_page != NULL) || init_kernel_iface() == 0) {
+		assert(!ctrl_page->pgm_sending);
+		ctrl_page->pgm_sending = 1; /* we will become boosted if
+		                               anyone tries to preempt us. */
+		__sync_synchronize();
+	}
+	else {
+		fprintf(stderr, "enter_pgm_send: control page not mapped!\n");
+	}
+}
+
+void exit_pgm_send(void)
+{
+	if (likely(ctrl_page != NULL)) {
+		assert(ctrl_page->pgm_sending);
+
+		ctrl_page->pgm_satisfied = 1;
+		__sync_synchronize();
+
+		/* re-eval priority. Should clear pgm_sending and pgm_satisfied. */
+		sched_yield();
+
+		/* double check that Litmus is doing its job */
+		assert(!ctrl_page->pgm_sending && !ctrl_page->pgm_satisfied);
+	}
+	else {
+		fprintf(stderr, "exit_pgm_send: control page not mapped!\n");
+	}
+}
+
 /* init and return a ptr to the control page for
  * preemption and migration overhead analysis
  *
@@ -152,4 +222,3 @@ struct control_page* get_ctrl_page(void)
 	else
 		return NULL;
 }
-

@@ -36,12 +36,19 @@ int sporadic_partitioned(lt_t e_ns, lt_t p_ns, int partition);
 int sporadic_clustered(lt_t e_ns, lt_t p_ns, int cluster);
 
 /* simple time unit conversion macros */
-#define s2ns(s)   ((s)*1000000000LL)
-#define s2us(s)   ((s)*1000000LL)
-#define s2ms(s)   ((s)*1000LL)
-#define ms2ns(ms) ((ms)*1000000LL)
-#define ms2us(ms) ((ms)*1000LL)
-#define us2ns(us) ((us)*1000LL)
+#define s2ns(s)   ((s)  * 1000000000LL)
+#define s2us(s)   ((s)  * 1000000LL)
+#define s2ms(s)   ((s)  * 1000LL)
+#define ms2ns(ms) ((ms) * 1000000LL)
+#define ms2us(ms) ((ms) * 1000LL)
+#define us2ns(us) ((us) * 1000LL)
+
+#define ns2us(ns) ((ns) * 0.001)
+#define ns2ms(ns) ((ns) * 0.000001)
+#define ns2s(ns)  ((ns) * 0.000000001)
+#define us2ms(us) ((us) * 0.001)
+#define us2s(us)  ((us) * 0.000001)
+#define ms2s(ms)  ((ms) * 0.001)
 
 /* file descriptor attached shared objects support */
 typedef enum  {
@@ -139,6 +146,15 @@ task_class_t str2class(const char* str);
 void enter_np(void);
 void exit_np(void);
 int  requested_to_preempt(void);
+
+/* pgm support */
+void enter_pgm_wait(void);
+void enter_pgm_wait_no_deadline_shift(void); /* deadline is not reset on wake */
+/* use with both regular and no_deadline_shift() variants */
+void exit_pgm_wait(void);
+
+void enter_pgm_send(void);
+void exit_pgm_send(void);
 
 /* task system support */
 int wait_for_ts_release();

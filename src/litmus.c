@@ -194,8 +194,7 @@ int init_litmus(void)
 int init_rt_thread(void)
 {
 	int ret;
-
-        ret = init_kernel_iface();
+	ret = init_kernel_iface();
 	check("kernel <-> user space interface initialization");
 	return ret;
 }

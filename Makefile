@@ -24,17 +24,18 @@ NUMA_SUPPORT = dummyval
 # Internal configuration.
 
 # compiler flags
-flags-debug    = -O2 -Wall -Werror -g -Wdeclaration-after-statement
-#flags-debug    = -Wall -Werror -g -Wdeclaration-after-statement
-flags-debug-cpp    = -O2 -Wall -Werror -g
-#flags-debug-cpp    = -Wall -Werror -g
+flags-debug    = -O2 -march=native -Wall -Werror -Wdeclaration-after-statement
+#flags-debug    = -O2 -Wall -Werror -g -Wdeclaration-after-statement
+flags-debug-cpp    = -O2 -march=native -Wall -Werror
+#flags-debug-cpp    = -O2 -Wall -Werror -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
 flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
 
-flags-cu-debug = -g -G -Xcompiler -Wall -Xcompiler -Werror
+flags-cu-debug = -Xcompiler -Wall -Xcompiler -Werror
+#flags-cu-debug = -g -G -Xcompiler -Wall -Xcompiler -Werror
 flags-cu-optim = -O2 -Xcompiler -march=native
 #flags-cu-optim = -Xcompiler -march=native
-flags-cu-nvcc = --use_fast_math -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30
+flags-cu-nvcc = --use_fast_math -gencode arch=compute_30,code=sm_30
 flags-cu-misc  = -Xcompiler -fasynchronous-unwind-tables -Xcompiler -fnon-call-exceptions -Xcompiler -malign-double -Xcompiler -pthread
 flags-cu-x86_64 = -m64
 

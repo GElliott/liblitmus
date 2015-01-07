@@ -26,8 +26,6 @@ using namespace std;
 using namespace boost::interprocess;
 using namespace ranlib;
 
-#define ms2s(ms)  ((ms)*0.001)
-
 const unsigned int TOKEN_START = 100;
 const unsigned int TOKEN_END = 101;
 
@@ -428,7 +426,8 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 				// optimization - don't unlock if no one else needs the engine
 				if (state->should_yield()) {
 					gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS); 
-					cudaEventSynchronize(cur_event());
+//					cudaEventSynchronize(cur_event());
+					cudaStreamSynchronize(cur_stream());
 					ret = cudaGetLastError();
 					if (kind == cudaMemcpyDeviceToHost || kind == cudaMemcpyDeviceToDevice)
 						inject_action(CE_RECV_END);
@@ -460,7 +459,7 @@ static cudaError_t __chunkMemcpy(void* a_dst, const void* a_src, size_t count,
         //ret = cudaMemcpy(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind);
 		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
 		cudaMemcpyAsync(dst+i*chunk_size, src+i*chunk_size, bytesToCopy, kind, cur_stream());
-		cudaEventRecord(cur_event(), cur_stream());
+//		cudaEventRecord(cur_event(), cur_stream());
 		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
 
 		if(state)
@@ -483,7 +482,7 @@ static cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 	if(!do_locking || device_a == -1) {
 		ret = __chunkMemcpy(a_dst, a_src, count, kind, NULL);
 		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-		cudaEventSynchronize(cur_event());
+		cudaStreamSynchronize(cur_stream());
 		if(ret == cudaSuccess)
 			ret = cudaGetLastError();
 		gpuspin_unblock_litmus_signals(ALL_LITMUS_SIG_MASKS);
@@ -499,8 +498,8 @@ static cudaError_t chunkMemcpy(void* a_dst, const void* a_src, size_t count,
 
 		ret = __chunkMemcpy(a_dst, a_src, count, kind, &state);
 		gpuspin_block_litmus_signals(ALL_LITMUS_SIG_MASKS);
-		cudaEventSynchronize(cur_event());
-		//		cudaStreamSynchronize(cur_stream());
+//		cudaEventSynchronize(cur_event());
+		cudaStreamSynchronize(cur_stream());
 		if(ret == cudaSuccess)
 			ret = cudaGetLastError();
 
@@ -930,7 +929,6 @@ static void init_cuda(const int num_gpu_users)
 		first_time = false;
 	}
 
-#if 0
 	switch (CUDA_SYNC_MODE)
 	{
 		case BLOCKING:
@@ -940,7 +938,6 @@ static void init_cuda(const int num_gpu_users)
 			cudaSetDeviceFlags(cudaDeviceScheduleSpin);
 			break;
 	}
-#endif
 
 	for(int i = 0; i < GPU_PARTITION_SIZE; ++i)
 	{
@@ -1277,8 +1274,9 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 				 (YIELD_LOCKS && litmus_should_yield_lock(cur_ee())) /* we should yield */
 				)
 			   ) {
-				cudaEventRecord(cur_event(), cur_stream());
-				cudaEventSynchronize(cur_event());
+//				cudaEventRecord(cur_event(), cur_stream());
+//				cudaEventSynchronize(cur_event());
+				cudaStreamSynchronize(cur_stream());
 				inject_action(EE_END);
 				litmus_unlock(cur_ee());
 				ee_locked = false;
@@ -1311,8 +1309,9 @@ static void gpu_loop_for(double gpu_sec_time, unsigned int num_kernels, double e
 	{
 		if (have_token)
 		{
-			cudaEventRecord(cur_event(), cur_stream());
-			cudaEventSynchronize(cur_event());
+//			cudaEventRecord(cur_event(), cur_stream());
+//			cudaEventSynchronize(cur_event());
+			cudaStreamSynchronize(cur_stream());
 
 			if (useEngineLocks()) {
 				if (ee_locked) {
@@ -1378,8 +1377,9 @@ static void gpu_loop_for_linux(double gpu_sec_time, unsigned int num_kernels, do
 		{
 			/* one block per sm, one warp per block */
 			docudaspin <<<cur_sms(),cur_warp_size(), 0, cur_stream()>>> (d_spin_data[cur_gpu()], cur_elem_per_thread(), numcycles);
-			cudaEventRecord(cur_event(), cur_stream());
-			cudaEventSynchronize(cur_event());
+//			cudaEventRecord(cur_event(), cur_stream());
+//			cudaEventSynchronize(cur_event());
+			cudaStreamSynchronize(cur_stream());
 		}
 
 		if(RECV_SIZE > 0)
