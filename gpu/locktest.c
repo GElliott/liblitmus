@@ -134,8 +134,10 @@ void* rt_thread(void* _ctx)
 
 	for (i = 0; i < NUM_SEMS; i++) {
 		ctx->od[i] = open_fmlp_sem(ctx->fd, i);
-		if(ctx->od[i] < 0)
+		if(ctx->od[i] < 0) {
 			perror("open_fmlp_sem");
+			return NULL;
+		}
 	}
 
 	TH_CALL( task_mode(LITMUS_RT_TASK) );

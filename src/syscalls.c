@@ -123,6 +123,16 @@ int null_call(cycles_t *timestamp)
 	return syscall(__NR_null_call, timestamp);
 }
 
+int trigger_crash(void)
+{
+	return syscall(__NR_litmus_show_state, 0, 1);
+}
+
+int set_dbg(pid_t target, int flag)
+{
+	return syscall(__NR_litmus_show_state, target, flag);
+}
+
 int enable_aux_rt_tasks(int flags)
 {
 	return syscall(__NR_set_aux_tasks, flags | AUX_ENABLE);

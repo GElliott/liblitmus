@@ -116,28 +116,73 @@ int init_kernel_iface(void)
 
 void enter_np(void)
 {
+	__sync_synchronize();
 	if (likely(ctrl_page != NULL) || init_kernel_iface() == 0)
+	{
 		ctrl_page->sched.np.flag++;
+	}
 	else
+	{
 		fprintf(stderr, "enter_np: control page not mapped!\n");
+	}
+	__sync_synchronize();
 }
 
 
 void exit_np(void)
 {
-	if (likely(ctrl_page != NULL) &&
-	    ctrl_page->sched.np.flag &&
-	    !(--ctrl_page->sched.np.flag)) {
-		/* became preemptive, let's check for delayed preemptions */
+	__sync_synchronize();
+	if (likely(ctrl_page != NULL) && ctrl_page->sched.np.flag)
+	{
+		ctrl_page->sched.np.flag--;
 		__sync_synchronize();
-		if (ctrl_page->sched.np.preempt)
+		if(ctrl_page->sched.np.flag == 0 && ctrl_page->sched.np.preempt)
+		{
 			sched_yield();
+		}
 	}
+	__sync_synchronize();
 }
 
 int requested_to_preempt(void)
 {
 	return (likely(ctrl_page != NULL) && ctrl_page->sched.np.preempt);
+}
+
+int is_dbg(void)
+{
+	if(likely(ctrl_page != NULL) || init_kernel_iface() == 0) {
+		return ctrl_page->dbg;
+	}
+	return 0;
+}
+
+int set_waiting(void* l)
+{
+	int ret = 0;
+	__sync_synchronize();
+	if(likely(ctrl_page != NULL) || init_kernel_iface() == 0) {
+		ctrl_page->waiting = l;
+	}
+	else {
+		ret = -1;
+	}
+	__sync_synchronize();
+	return ret;
+}
+
+int set_holding(void* l)
+{
+	int ret = 0;
+	__sync_synchronize();
+	if(likely(ctrl_page != NULL) || init_kernel_iface() == 0) {
+		ctrl_page->holding = l;
+	}
+	else {
+		ret = -1;
+	}
+	__sync_synchronize();
+	return ret;
 }
 
 void enter_pgm_wait(void)
@@ -149,7 +194,8 @@ void enter_pgm_wait(void)
 		__sync_synchronize();
 	}
 	else {
-		fprintf(stderr, "enter_pgm_wait: control page not mapped!\n");
+		assert(0);
+//		fprintf(stderr, "enter_pgm_wait: control page not mapped!\n");
 	}
 }
 
@@ -161,7 +207,8 @@ void enter_pgm_wait_no_deadline_shift(void)
 		__sync_synchronize();
 	}
 	else {
-		fprintf(stderr, "enter_pgm_wait: control page not mapped!\n");
+		assert(0);
+//		fprintf(stderr, "enter_pgm_wait: control page not mapped!\n");
 	}
 }
 
@@ -174,7 +221,8 @@ void exit_pgm_wait(void)
 		__sync_synchronize();
 	}
 	else {
-		fprintf(stderr, "exit_pgm_wait: control page not mapped!\n");
+		assert(0);
+//		fprintf(stderr, "exit_pgm_wait: control page not mapped!\n");
 	}
 }
 
@@ -187,7 +235,8 @@ void enter_pgm_send(void)
 		__sync_synchronize();
 	}
 	else {
-		fprintf(stderr, "enter_pgm_send: control page not mapped!\n");
+		assert(0);
+//		fprintf(stderr, "enter_pgm_send: control page not mapped!\n");
 	}
 }
 
@@ -206,7 +255,8 @@ void exit_pgm_send(void)
 		assert(!ctrl_page->pgm_sending && !ctrl_page->pgm_satisfied);
 	}
 	else {
-		fprintf(stderr, "exit_pgm_send: control page not mapped!\n");
+		assert(0);
+//		fprintf(stderr, "exit_pgm_send: control page not mapped!\n");
 	}
 }
 

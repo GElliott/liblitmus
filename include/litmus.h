@@ -147,6 +147,10 @@ void enter_np(void);
 void exit_np(void);
 int  requested_to_preempt(void);
 
+int is_dbg(void);
+int set_waiting(void* l);
+int set_holding(void* l);
+
 /* pgm support */
 void enter_pgm_wait(void);
 void enter_pgm_wait_no_deadline_shift(void); /* deadline is not reset on wake */
@@ -272,6 +276,10 @@ int open_gpusync_token_lock(int fd, int name,
 
 /* syscall overhead measuring */
 int null_call(cycles_t *timestamp);
+
+int trigger_crash(void);
+int set_dbg(pid_t target, int flag);
+int is_dbg(void);
 
 /*
  * get control page:

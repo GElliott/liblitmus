@@ -110,7 +110,7 @@ lt_t overrun_extra = 0;
 
 int job(lt_t exec_ns, lt_t budget_ns)
 {
-	++NUM_JOBS;
+	__sync_fetch_and_add(&NUM_JOBS, 1);
 
 	try{
 		lt_t approx_remaining = budget_ns;
@@ -155,10 +155,10 @@ int job(lt_t exec_ns, lt_t budget_ns)
 					unblock_litmus_signals(SIG_BUDGET);
 			}
 		}
-		++NUM_COMPLETED_JOBS;
+		__sync_fetch_and_add(&NUM_COMPLETED_JOBS, 1);
 	}
 	catch (const litmus::sigbudget& e) {
-		++NUM_OVERRUNS;
+		__sync_fetch_and_add(&NUM_OVERRUNS, 1);
 	}
 
 	sleep_next_period();
@@ -349,6 +349,9 @@ int main(int argc, char** argv)
 
 	terminate_time = duration + wtime_ns();
 
+
+	int extra_overruns = 0;
+
 	while (wtime_ns() < terminate_time) {
 		try{
 			if(once) {
@@ -359,6 +362,7 @@ int main(int argc, char** argv)
 		}
 		catch(const litmus::sigbudget &e) {
 			/* drop silently */
+			++extra_overruns;
 		}
 	}
 
@@ -372,6 +376,7 @@ int main(int argc, char** argv)
 	printf("# User Started Jobs: %d\n", NUM_JOBS);
 	printf("# User Jobs Completed: %d\n", NUM_COMPLETED_JOBS);
 	printf("# Overruns: %d\n", NUM_OVERRUNS);
+	printf("# Extra Overruns: %d\n", extra_overruns);
 
 	delete[] LOCKS;
 

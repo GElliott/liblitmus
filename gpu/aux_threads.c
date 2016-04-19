@@ -164,8 +164,8 @@ int main(int argc, char** argv)
 	{
 	int last = time(0);
 //	struct timespec sleeptime = {0, 1000}; // 1 microsecond
-//	for(i = 0; i < 24000; ++i) {
-	for(i = 0; i < 2000; ++i) {
+	for(i = 0; i < 24000; ++i) {
+//	for(i = 0; i < 2000; ++i) {
 		sleep_next_period();
 //		printf("RED LEADER!\n");
 
@@ -175,7 +175,7 @@ int main(int argc, char** argv)
 
 		if((i%(10000/PERIOD)) == 0) {
 			int now = time(0);
-			printf("hearbeat %d: %d\n", i, now - last);
+			printf("heartbeat %d: %d\n", i, now - last);
 			last = now;
 		}
 
@@ -183,8 +183,10 @@ int main(int argc, char** argv)
 	}
 	}
 
+	__sync_synchronize();
 	CALL( disable_aux_rt_tasks(aux_flags) );
 	gRun = 0;
+	__sync_synchronize();
 
 	CALL( task_mode(BACKGROUND_TASK) );
 

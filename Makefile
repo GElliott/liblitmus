@@ -24,19 +24,19 @@ NUMA_SUPPORT = dummyval
 # Internal configuration.
 
 # compiler flags
+#flags-debug    = -g -march=native -Wall -Werror -Wdeclaration-after-statement
+#flags-debug-cpp    = -g -march=native -Wall -Werror
 flags-debug    = -O2 -march=native -Wall -Werror -Wdeclaration-after-statement
-#flags-debug    = -O2 -Wall -Werror -g -Wdeclaration-after-statement
 flags-debug-cpp    = -O2 -march=native -Wall -Werror
-#flags-debug-cpp    = -O2 -Wall -Werror -g
 flags-api      = -D_XOPEN_SOURCE=600 -D_GNU_SOURCE
-flags-misc     = -fasynchronous-unwind-tables -fnon-call-exceptions
+flags-misc     = -fPIC -fasynchronous-unwind-tables -fnon-call-exceptions
 
-flags-cu-debug = -Xcompiler -Wall -Xcompiler -Werror
 #flags-cu-debug = -g -G -Xcompiler -Wall -Xcompiler -Werror
-flags-cu-optim = -O2 -Xcompiler -march=native
 #flags-cu-optim = -Xcompiler -march=native
+flags-cu-debug = -Xcompiler -Wall -Xcompiler -Werror
+flags-cu-optim = -O2 -Xcompiler -march=native
 flags-cu-nvcc = --use_fast_math -gencode arch=compute_30,code=sm_30
-flags-cu-misc  = -Xcompiler -fasynchronous-unwind-tables -Xcompiler -fnon-call-exceptions -Xcompiler -malign-double -Xcompiler -pthread
+flags-cu-misc  = -Xcompiler -fPIC -Xcompiler -fasynchronous-unwind-tables -Xcompiler -fnon-call-exceptions -Xcompiler -malign-double -Xcompiler -pthread
 flags-cu-x86_64 = -m64
 
 # architecture-specific flags
@@ -112,7 +112,7 @@ CU  := ${CROSS_COMPILE}${CU}
 # Targets
 
 all     = lib ${rt-apps} ${rt-cppapps} ${rt-cuapps}
-rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
+rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall crash setdbg \
 	  base_mt_task uncache runtests \
 	  nested locktest r2dglptest dgl aux_threads normal_task
 rt-cppapps = budget
@@ -229,7 +229,7 @@ imported-headers = ${litmus-headers} ${unistd-headers}
 # ##############################################################################
 # liblitmus
 
-lib: liblitmus.a
+lib: liblitmus.a liblitmus.so
 
 # all .c file in src/ are linked into liblitmus
 vpath %.c src/
@@ -237,6 +237,9 @@ obj-lib = $(patsubst src/%.c,%.o,$(wildcard src/*.c))
 
 liblitmus.a: ${obj-lib}
 	${AR} rcs $@ $+
+
+liblitmus.so: ${obj-lib}
+	$(CPP) -fPIC -shared -o $@ $+ -lpthread -lm -lrt -lnuma
 
 # ##############################################################################
 # Tests suite.
@@ -299,6 +302,11 @@ obj-release_ts = release_ts.o
 obj-measure_syscall = null_call.o
 lib-measure_syscall = -lm
 
+obj-crash = crash.o
+lib-crash = -lrt
+
+obj-setdbg = setdbg.o
+lib-setdbg = -lrt
 
 vpath %.cpp gpu/
 
